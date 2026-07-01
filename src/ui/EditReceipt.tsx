@@ -3,7 +3,7 @@ import { mountCropEditor } from '../cropEditor'
 import { buildPdf } from '../pdf'
 import { recognizeFirstPage } from '../ocr'
 import { extractFields } from '../ocr/extractFields'
-import { deriveYearMonth } from '../model/receipt'
+import { deriveYearMonth, parseEuroToCents } from '../model/receipt'
 import { saveReceipt } from '../db/receiptStore'
 import { draftPages, goto } from '../state/appState'
 import type { Receipt } from '../types'
@@ -60,7 +60,7 @@ export function EditReceipt() {
       <div ref={holderRef} class="card" />
       <div class="card">
         <Field label="Belegdatum"><input type="date" value={form.belegdatum} onInput={e => setForm(f => ({ ...f, belegdatum: (e.target as HTMLInputElement).value }))} /></Field>
-        <Field label="Betrag (€)"><input inputMode="decimal" value={form.betrag !== null ? (form.betrag/100).toFixed(2).replace('.', ',') : ''} onInput={e => setForm(f => ({ ...f, betrag: parseEuro((e.target as HTMLInputElement).value) }))} /></Field>
+        <Field label="Betrag (€)"><input inputMode="decimal" value={form.betrag !== null ? (form.betrag/100).toFixed(2).replace('.', ',') : ''} onInput={e => setForm(f => ({ ...f, betrag: parseEuroToCents((e.target as HTMLInputElement).value) }))} /></Field>
         <Field label="Lieferant"><input value={form.lieferant} onInput={e => setForm(f => ({ ...f, lieferant: (e.target as HTMLInputElement).value }))} /></Field>
         <Field label="Kategorie"><input value={form.kategorie} onInput={e => setForm(f => ({ ...f, kategorie: (e.target as HTMLInputElement).value }))} /></Field>
         <Field label="Tags"><input value={tagInput} onInput={e => setTagInput((e.target as HTMLInputElement).value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }} /></Field>
@@ -75,5 +75,4 @@ export function EditReceipt() {
   )
 }
 
-function parseEuro(s: string): number | null { const m = s.replace(/[^\d.,]/g,'').replace(/\./g,'').replace(',', '.'); const v = Number(m); return isFinite(v) && m ? Math.round(v*100) : null }
 function detectQuadFullFrame(c: HTMLCanvasElement) { return { topLeft:{x:0,y:0}, topRight:{x:c.width,y:0}, bottomRight:{x:c.width,y:c.height}, bottomLeft:{x:0,y:c.height} } }
