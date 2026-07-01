@@ -1,2 +1,8 @@
 * { box-sizing: border-box; }
 body { margin: 0; font-family: -apple-system, system-ui, sans-serif; }
+
+.corner-handle {
+  position: absolute; width: 28px; height: 28px; margin: -14px 0 0 -14px;
+  border: 3px solid #0a84ff; border-radius: 50%; background: rgba(10,132,255,.25);
+  touch-action: none;
+}
