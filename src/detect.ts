@@ -78,10 +78,13 @@ type JscanifyCtor = new () => JscanifyScanner
 const Jscanify = jscanify as unknown as JscanifyCtor
 
 const OPENCV_URL = 'https://docs.opencv.org/4.10.0/opencv.js'
+let openCvPromise: Promise<void> | null = null
 
 export function loadOpenCv(): Promise<void> {
   if (window.cv?.Mat) return Promise.resolve()
-  return new Promise((resolve, reject) => {
+  if (openCvPromise) return openCvPromise
+
+  openCvPromise = new Promise<void>((resolve, reject) => {
     const s = document.createElement('script')
     s.src = OPENCV_URL
     s.async = true
@@ -92,9 +95,17 @@ export function loadOpenCv(): Promise<void> {
       else if (cv) cv.onRuntimeInitialized = () => resolve()
       else reject(new Error('OpenCV.js konnte nicht geladen werden'))
     }
-    s.onerror = () => reject(new Error('OpenCV.js konnte nicht geladen werden'))
+    s.onerror = () => {
+      openCvPromise = null
+      reject(new Error('OpenCV.js konnte nicht geladen werden'))
+    }
     document.head.appendChild(s)
+  }).catch((err) => {
+    openCvPromise = null
+    throw err
   })
+
+  return openCvPromise
 }
 
 export async function detectQuad(canvas: HTMLCanvasElement): Promise<Quad> {
@@ -132,8 +143,12 @@ export function warp(canvas: HTMLCanvasElement, quad: Quad): HTMLCanvasElement {
     bottomRightCorner: quad.bottomRight,
     bottomLeftCorner: quad.bottomLeft,
   }
-  const result = scanner.extractPaper(canvas, width, height, cornerPoints)
-  return result ?? canvas
+  try {
+    const result = scanner.extractPaper(canvas, width, height, cornerPoints)
+    return result ?? canvas
+  } catch {
+    return canvas
+  }
 }
 
 function dist(a: Point, b: Point): number {
