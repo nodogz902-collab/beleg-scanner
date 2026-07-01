@@ -15,4 +15,15 @@ describe('extractFields', () => {
   it('leerer Text → alles null', () => {
     expect(extractFields('')).toEqual({ belegdatum: null, betrag: null, lieferant: null })
   })
+  it('Schlüsselwort-Betrag gewinnt über größten Betrag im Text', () => {
+    // Keyword "Summe" mit 5,00 muss gegen Max 20,00 (Rabatt-Zeile) gewinnen
+    expect(extractFields('Summe 5,00\nRabatt 20,00').betrag).toBe(500)
+  })
+  it('2-stelliges Jahr dd.mm.yy → 20yy', () => {
+    expect(extractFields('Datum 01.07.26').belegdatum).toBe('2026-07-01')
+  })
+  it('Beleg-Fallback → lieferant null', () => {
+    // Text mit nur generischen Wörtern und Zahlen triggert Fallback
+    expect(extractFields('Rechnung\n99,99 €\nQuittung').lieferant).toBe(null)
+  })
 })
