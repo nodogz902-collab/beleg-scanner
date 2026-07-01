@@ -1,2 +1,4 @@
-const app = document.querySelector<HTMLDivElement>('#app')!
-app.textContent = 'Beleg-Scanner'
+import './styles.css'
+import { startApp } from './app'
+
+startApp(document.querySelector<HTMLDivElement>('#app')!)
