@@ -39,7 +39,7 @@ async function showCapture(root: HTMLElement) {
     done.onclick = () => {
       done.disabled = true
       stopOnce()
-      showFinish(root)
+      showPages(root)
     }
     main.appendChild(done)
   }
@@ -80,18 +80,51 @@ function showCrop(root: HTMLElement, canvas: HTMLCanvasElement, quad: Quad) {
     editor.destroy()
     const warped = warp(canvas, finalQuad)
     enhanceCanvas(warped)
-    warped.toBlob(blob => {
-      if (!blob) {
-        showCapture(root)
-        root.querySelector('main')?.appendChild(note('Seite konnte nicht gespeichert werden. Bitte erneut versuchen.'))
-        return
-      }
-      const url = warped.toDataURL('image/jpeg', 0.85)
-      store.add({ image: blob, width: warped.width, height: warped.height, thumbnailUrl: url })
-      showCapture(root)
-    }, 'image/jpeg', 0.85)
+    const url = warped.toDataURL('image/jpeg', 0.85)
+    store.add({ width: warped.width, height: warped.height, thumbnailUrl: url })
+    showPages(root)
   }
   main.append(retake, ok)
+}
+
+function showPages(root: HTMLElement) {
+  const main = screen(root, 'Seiten')
+  const pages = store.list()
+  if (pages.length === 0) {
+    showCapture(root)
+    return
+  }
+  pages.forEach((page, i) => {
+    const row = document.createElement('div')
+    row.className = 'page-row'
+    const img = document.createElement('img')
+    img.src = page.thumbnailUrl
+    row.appendChild(img)
+    const up = button('↑', 'secondary')
+    up.disabled = i === 0
+    up.onclick = () => {
+      store.move(page.id, -1)
+      showPages(root)
+    }
+    const down = button('↓', 'secondary')
+    down.disabled = i === pages.length - 1
+    down.onclick = () => {
+      store.move(page.id, 1)
+      showPages(root)
+    }
+    const del = button('✕ Löschen', 'secondary')
+    del.onclick = () => {
+      store.remove(page.id)
+      showPages(root)
+    }
+    row.append(up, down, del)
+    main.appendChild(row)
+  })
+  const add = button('+ Seite hinzufügen', 'secondary')
+  add.onclick = () => showCapture(root)
+  const done = button('Fertig', 'primary')
+  done.onclick = () => showFinish(root)
+  main.append(add, done)
 }
 
 async function showFinish(root: HTMLElement) {
@@ -120,7 +153,7 @@ async function showFinish(root: HTMLElement) {
     }
   }
   const back = button('Zurück', 'secondary')
-  back.onclick = () => showCapture(root)
+  back.onclick = () => showPages(root)
   main.append(input, share, back)
 }
 

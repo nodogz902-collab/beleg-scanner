@@ -15,3 +15,7 @@ body { margin: 0; font-family: -apple-system, system-ui, sans-serif; }
 .btn.secondary { background: #e5e5ea; color: #000; }
 .name-input { padding: 14px; font-size: 16px; border: 1px solid #c7c7cc; border-radius: 10px; }
 .note { color: #636366; }
+
+.page-row { display: flex; align-items: center; gap: 8px; }
+.page-row img { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; background: #000; flex-shrink: 0; }
+.page-row .btn { padding: 8px 10px; font-size: 14px; }

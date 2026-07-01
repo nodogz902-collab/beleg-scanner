@@ -12,7 +12,6 @@ export interface Quad {
 
 export interface Page {
   id: string
-  image: Blob
   width: number
   height: number
   thumbnailUrl: string

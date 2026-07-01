@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { PageStore } from '../src/pages'
 
 function fakePage(tag: string) {
-  return { image: new Blob([tag]), width: 100, height: 200, thumbnailUrl: `data:${tag}` }
+  return { width: 100, height: 200, thumbnailUrl: `data:${tag}` }
 }
 
 describe('PageStore', () => {
