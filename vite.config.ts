@@ -10,7 +10,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon-192.png', 'icon-512.png'],
       manifest: {
-        name: 'Beleg-Scanner',
+        name: 'Belegablage',
         short_name: 'Belege',
         start_url: '/beleg-scanner/',
         display: 'standalone',
