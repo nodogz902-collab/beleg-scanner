@@ -1,18 +1,46 @@
 import { getDb } from './database'
 import type { Receipt } from '../types'
 
+// Helper to serialize Blob to Uint8Array for storage (needed for fake-indexeddb in tests)
+async function serializeBlob(blob: Blob): Promise<number[]> {
+  const buffer = await blob.arrayBuffer()
+  return Array.from(new Uint8Array(buffer))
+}
+
+// Helper to deserialize Uint8Array back to Blob
+function deserializeBlob(data: number[]): Blob {
+  return new Blob([new Uint8Array(data)])
+}
+
+// Serialize receipt for storage
+async function serializeReceipt(r: Receipt): Promise<any> {
+  return {
+    ...r,
+    pdfBlob: await serializeBlob(r.pdfBlob)
+  }
+}
+
+// Deserialize receipt from storage
+function deserializeReceipt(r: any): Receipt {
+  return {
+    ...r,
+    pdfBlob: Array.isArray(r.pdfBlob) ? deserializeBlob(r.pdfBlob) : r.pdfBlob
+  }
+}
+
 export async function saveReceipt(r: Receipt): Promise<void> {
-  const db = await getDb(); await db.put('receipts', r)
+  const db = await getDb(); await db.put('receipts', await serializeReceipt(r))
 }
 export async function getReceipt(id: string): Promise<Receipt | undefined> {
-  const db = await getDb(); return db.get('receipts', id)
+  const db = await getDb(); const r = await db.get('receipts', id)
+  return r ? deserializeReceipt(r) : undefined
 }
 export async function deleteReceipt(id: string): Promise<void> {
   const db = await getDb(); await db.delete('receipts', id)
 }
 export async function allReceipts(): Promise<Receipt[]> {
   const db = await getDb(); const all = await db.getAll('receipts')
-  return all.sort((a, b) => (a.belegdatum < b.belegdatum ? 1 : a.belegdatum > b.belegdatum ? -1 : 0))
+  return all.map(deserializeReceipt).sort((a, b) => (a.belegdatum < b.belegdatum ? 1 : a.belegdatum > b.belegdatum ? -1 : 0))
 }
 export async function listMonths(): Promise<{ jahr: number; monat: number; count: number; summe: number }[]> {
   const all = await allReceipts()
