@@ -21,7 +21,7 @@ export function ReceiptDetail() {
       <img src={r.thumbnailDataUrl} style="width:100%;max-width:420px;border-radius:var(--radius);border:1px solid var(--border)" />
       <div class="card">
         <Field label="Lieferant"><input value={r.lieferant} onChange={e => persist({ lieferant: (e.target as HTMLInputElement).value })} /></Field>
-        <Field label="Belegdatum"><input type="date" value={r.belegdatum} onChange={e => { const v=(e.target as HTMLInputElement).value; const [y,m]=v.split('-').map(Number); persist({ belegdatum: v, jahr: y, monat: m }) }} /></Field>
+        <Field label="Belegdatum"><input type="date" value={r.belegdatum} onChange={e => { const v=(e.target as HTMLInputElement).value; if (!v) return; const [y,m]=v.split('-').map(Number); persist({ belegdatum: v, jahr: y, monat: m }) }} /></Field>
         <div style="color:var(--text-muted)">Betrag: {formatEuro(r.betrag)} · {r.kategorie}</div>
         {r.notiz && <p>{r.notiz}</p>}
       </div>

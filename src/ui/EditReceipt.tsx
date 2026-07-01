@@ -59,7 +59,7 @@ export function EditReceipt() {
     <div class="edit" style="padding:var(--sp-4);display:grid;gap:var(--sp-4)">
       <div ref={holderRef} class="card" />
       <div class="card">
-        <Field label="Belegdatum"><input type="date" value={form.belegdatum} onInput={e => setForm(f => ({ ...f, belegdatum: (e.target as HTMLInputElement).value }))} /></Field>
+        <Field label="Belegdatum"><input type="date" value={form.belegdatum} onInput={e => { const v = (e.target as HTMLInputElement).value; if (!v) return; setForm(f => ({ ...f, belegdatum: v })) }} /></Field>
         <Field label="Betrag (€)"><input inputMode="decimal" value={form.betrag !== null ? (form.betrag/100).toFixed(2).replace('.', ',') : ''} onInput={e => setForm(f => ({ ...f, betrag: parseEuroToCents((e.target as HTMLInputElement).value) }))} /></Field>
         <Field label="Lieferant"><input value={form.lieferant} onInput={e => setForm(f => ({ ...f, lieferant: (e.target as HTMLInputElement).value }))} /></Field>
         <Field label="Kategorie"><input value={form.kategorie} onInput={e => setForm(f => ({ ...f, kategorie: (e.target as HTMLInputElement).value }))} /></Field>
