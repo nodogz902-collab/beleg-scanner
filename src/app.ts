@@ -27,12 +27,22 @@ async function showCapture(root: HTMLElement) {
   main.appendChild(video)
   const shot = button('Foto aufnehmen', 'primary')
   main.appendChild(shot)
+  let stream: MediaStream | undefined
+  let stopped = false
+  function stopOnce() {
+    if (stopped || !stream) return
+    stopped = true
+    stopCamera(stream)
+  }
   if (store.count() > 0) {
     const done = button(`Fertig (${store.count()} Seiten)`, 'secondary')
-    done.onclick = () => showFinish(root)
+    done.onclick = () => {
+      done.disabled = true
+      stopOnce()
+      showFinish(root)
+    }
     main.appendChild(done)
   }
-  let stream: MediaStream
   try {
     stream = await startCamera(video)
   } catch {
@@ -40,10 +50,15 @@ async function showCapture(root: HTMLElement) {
     return
   }
   shot.onclick = async () => {
+    shot.disabled = true
     const full = downscale(captureFrame(video), MAX_DIM)
-    stopCamera(stream)
-    const quad = await detectQuad(full)
-    showCrop(root, full, quad)
+    stopOnce()
+    try {
+      const quad = await detectQuad(full)
+      showCrop(root, full, quad)
+    } catch {
+      showCapture(root)
+    }
   }
 }
 
@@ -53,14 +68,26 @@ function showCrop(root: HTMLElement, canvas: HTMLCanvasElement, quad: Quad) {
   main.appendChild(holder)
   const editor = mountCropEditor(holder, canvas, quad)
   const retake = button('Neu aufnehmen', 'secondary')
-  retake.onclick = () => showCapture(root)
+  retake.onclick = () => {
+    retake.disabled = true
+    editor.destroy()
+    showCapture(root)
+  }
   const ok = button('Übernehmen', 'primary')
   ok.onclick = () => {
-    const warped = warp(canvas, editor.getQuad())
+    ok.disabled = true
+    const finalQuad = editor.getQuad()
+    editor.destroy()
+    const warped = warp(canvas, finalQuad)
     enhanceCanvas(warped)
     warped.toBlob(blob => {
+      if (!blob) {
+        showCapture(root)
+        root.querySelector('main')?.appendChild(note('Seite konnte nicht gespeichert werden. Bitte erneut versuchen.'))
+        return
+      }
       const url = warped.toDataURL('image/jpeg', 0.85)
-      store.add({ image: blob!, width: warped.width, height: warped.height, thumbnailUrl: url })
+      store.add({ image: blob, width: warped.width, height: warped.height, thumbnailUrl: url })
       showCapture(root)
     }, 'image/jpeg', 0.85)
   }
@@ -83,9 +110,14 @@ async function showFinish(root: HTMLElement) {
   input.className = 'name-input'
   const share = button('PDF teilen', 'primary')
   share.onclick = async () => {
-    const images = store.list().map(p => p.thumbnailUrl)
-    const blob = buildPdf(images)
-    await sharePdf(blob, `${input.value.trim() || title}.pdf`)
+    share.disabled = true
+    try {
+      const images = store.list().map(p => p.thumbnailUrl)
+      const blob = buildPdf(images)
+      await sharePdf(blob, `${input.value.trim() || title}.pdf`)
+    } finally {
+      share.disabled = false
+    }
   }
   const back = button('Zurück', 'secondary')
   back.onclick = () => showCapture(root)

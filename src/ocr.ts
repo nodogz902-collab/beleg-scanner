@@ -31,7 +31,12 @@ let workerPromise: ReturnType<typeof createWorker> | null = null
 /** Lazy: erstellt einen deutschen Tesseract-Worker (Modell wird gecacht). */
 export async function recognizeFirstPage(imageDataUrl: string): Promise<string> {
   if (!workerPromise) workerPromise = createWorker('deu')
-  const worker = await workerPromise
-  const { data } = await worker.recognize(imageDataUrl)
-  return data.text
+  try {
+    const worker = await workerPromise
+    const { data } = await worker.recognize(imageDataUrl)
+    return data.text
+  } catch (err) {
+    workerPromise = null
+    throw err
+  }
 }
