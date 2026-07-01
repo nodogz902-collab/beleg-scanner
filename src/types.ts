@@ -10,6 +10,11 @@ export interface Quad {
   bottomLeft: Point
 }
 
+export interface DraftPage {
+  original: HTMLCanvasElement
+  quad: Quad
+}
+
 export interface Page {
   id: string
   width: number

@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { startCamera, stopCamera, captureFrame, downscale } from '../camera'
 import { startLiveDetect } from '../scan/liveDetect'
-import { detectQuad, warp } from '../detect'
-import { enhanceCanvas } from '../enhance'
+import { detectQuad } from '../detect'
 import { draftPages, goto } from '../state/appState'
 import { Button } from './components/Button'
 
@@ -24,9 +23,7 @@ export function Scan() {
     cleanup()
     setBusy(true)
     const quad = await detectQuad(full)
-    const warped = warp(full, quad)
-    enhanceCanvas(warped)
-    draftPages.value = [...draftPages.value, warped]
+    draftPages.value = [...draftPages.value, { original: full, quad }]
     goto('edit')
   }
   function cleanup() {

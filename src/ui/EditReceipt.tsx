@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { mountCropEditor } from '../cropEditor'
+import { warp } from '../detect'
+import { enhanceCanvas } from '../enhance'
 import { buildPdf } from '../pdf'
 import { recognizeFirstPage } from '../ocr'
 import { extractFields } from '../ocr/extractFields'
@@ -35,10 +37,10 @@ export function EditReceipt() {
 
   useEffect(() => {
     if (!pages.length || !holderRef.current) return
-    editorRef.current = mountCropEditor(holderRef.current, pages[pages.length - 1], detectQuadFullFrame(pages[pages.length - 1]))
+    editorRef.current = mountCropEditor(holderRef.current, pages[pages.length - 1].original, pages[pages.length - 1].quad)
     ;(async () => {
       try {
-        const text = await recognizeFirstPage(pages[0].toDataURL('image/jpeg', 0.85))
+        const text = await recognizeFirstPage(pages[0].original.toDataURL('image/jpeg', 0.85))
         const f = extractFields(text)
         setForm(prev => ({ ...prev, ocrText: text, belegdatum: f.belegdatum ?? prev.belegdatum, betrag: f.betrag ?? prev.betrag, lieferant: f.lieferant ?? prev.lieferant }))
       } catch { /* OCR optional */ }
@@ -47,7 +49,13 @@ export function EditReceipt() {
   }, [])
 
   async function save() {
-    const r = buildReceiptFromForm({ pages, form, now: Date.now(), id: `r${Date.now()}` })
+    const finalPages = pages.map((p, i) => {
+      const quad = (i === pages.length - 1 && editorRef.current) ? editorRef.current.getQuad() : p.quad
+      const w = warp(p.original, quad)
+      enhanceCanvas(w)
+      return w
+    })
+    const r = buildReceiptFromForm({ pages: finalPages, form, now: Date.now(), id: `r${Date.now()}` })
     await saveReceipt(r)
     draftPages.value = []
     goto('archive')
@@ -74,5 +82,3 @@ export function EditReceipt() {
     </div>
   )
 }
-
-function detectQuadFullFrame(c: HTMLCanvasElement) { return { topLeft:{x:0,y:0}, topRight:{x:c.width,y:0}, bottomRight:{x:c.width,y:c.height}, bottomLeft:{x:0,y:c.height} } }

@@ -1,8 +1,9 @@
 import { signal } from '@preact/signals'
+import type { DraftPage } from '../types'
 
 export type View = 'scan' | 'edit' | 'archive' | 'detail' | 'settings'
 export const view = signal<View>('archive')
-export const draftPages = signal<HTMLCanvasElement[]>([])
+export const draftPages = signal<DraftPage[]>([])
 export const selectedId = signal<string | null>(null)
 export const archiveQuery = signal<{ jahr?: number; monat?: number; lieferant?: string; kategorie?: string; tag?: string; text?: string }>({})
 export const theme = signal<'light' | 'dark' | 'system'>('system')
