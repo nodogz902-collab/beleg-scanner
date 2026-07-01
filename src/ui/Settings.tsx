@@ -14,11 +14,27 @@ export function Settings() {
   const [msg, setMsg] = useState<string>('')
   useEffect(() => { navigator.storage?.estimate?.().then(e => { const mb=(n?:number)=>Math.round((n??0)/1e6); setUsage(`${mb(e.usage)} MB von ${mb(e.quota)} MB genutzt`) }) }, [])
 
-  async function doExport() { const blob = await exportArchive(); download(blob, `belegablage-backup-${Date.now()}.zip`) }
+  async function doExport() {
+    try {
+      const blob = await exportArchive()
+      download(blob, `belegablage-backup-${Date.now()}.zip`)
+    } catch {
+      setMsg('Export fehlgeschlagen.')
+    }
+  }
   async function doImport(e: Event) {
-    const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return
-    const mode = confirm('OK = zusammenführen (behält Bestehendes), Abbrechen = ersetzen') ? 'merge' : 'replace'
-    const n = await importArchive(file, mode as 'merge'|'replace'); setMsg(`${n} Belege importiert.`)
+    const input = e.target as HTMLInputElement
+    const file = input.files?.[0]; if (!file) return
+    const choice = prompt('Import-Modus wählen:\n\n"m" = Zusammenführen (behält vorhandene Belege)\n"r" = Ersetzen (löscht ALLE vorhandenen Belege!)\n\nAbbrechen bricht den Import ab.', 'm')
+    input.value = ''
+    if (choice === null) return                 // Abbrechen = nichts tun (kein Datenverlust)
+    const mode: 'merge' | 'replace' = choice.trim().toLowerCase().startsWith('r') ? 'replace' : 'merge'
+    try {
+      const n = await importArchive(file, mode)
+      setMsg(`${n} Belege importiert.`)
+    } catch {
+      setMsg('Import fehlgeschlagen — Datei ist kein gültiges Backup-ZIP.')
+    }
   }
 
   return (
