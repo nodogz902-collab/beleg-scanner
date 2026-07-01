@@ -77,7 +77,7 @@ interface JscanifyScanner {
 type JscanifyCtor = new () => JscanifyScanner
 const Jscanify = jscanify as unknown as JscanifyCtor
 
-const OPENCV_URL = 'https://docs.opencv.org/4.10.0/opencv.js'
+const OPENCV_URL = 'https://docs.opencv.org/4.9.0/opencv.js'
 let openCvPromise: Promise<void> | null = null
 
 export function loadOpenCv(): Promise<void> {
