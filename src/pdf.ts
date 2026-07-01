@@ -3,7 +3,7 @@ import { jsPDF } from 'jspdf'
 const A4 = { w: 595.28, h: 841.89 } // pt
 
 /** Baut ein A4-PDF und gibt die Bytes zurück: jedes JPEG-DataURL wird bildfüllend (mit Rand) auf ein Blatt gelegt. */
-export function buildPdfBytes(images: string[]): Uint8Array {
+export function buildPdfBytes(images: string[]): Uint8Array<ArrayBuffer> {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   const margin = 20
   images.forEach((dataUrl, idx) => {
