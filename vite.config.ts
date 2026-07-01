@@ -1,9 +1,11 @@
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import preact from '@preact/preset-vite'
 
 export default defineConfig({
   base: '/beleg-scanner/',
   plugins: [
+    preact(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon-192.png', 'icon-512.png'],
@@ -31,5 +33,5 @@ export default defineConfig({
       },
     }),
   ],
-  test: { environment: 'jsdom', globals: true },
+  test: { environment: 'jsdom', globals: true, setupFiles: ['./test/setup.ts'] },
 })
