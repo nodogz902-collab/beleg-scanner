@@ -16,3 +16,20 @@ export interface Page {
   height: number
   thumbnailUrl: string
 }
+
+export interface Receipt {
+  id: string
+  createdAt: number
+  belegdatum: string
+  jahr: number
+  monat: number
+  betrag: number | null
+  lieferant: string
+  kategorie: string
+  tags: string[]
+  notiz: string
+  pageBlobs: Blob[]
+  pdfBlob: Blob
+  thumbnailDataUrl: string
+  ocrText: string
+}
