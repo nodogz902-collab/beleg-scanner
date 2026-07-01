@@ -16,14 +16,17 @@ export function Scan() {
   const [busy, setBusy] = useState(false)
   const streamRef = useRef<MediaStream | null>(null)
   const stopLoopRef = useRef<(() => void) | null>(null)
+  const processedRef = useRef(false)
 
   async function process(full: HTMLCanvasElement) {
+    if (processedRef.current) return
+    processedRef.current = true
+    cleanup()
     setBusy(true)
     const quad = await detectQuad(full)
     const warped = warp(full, quad)
     enhanceCanvas(warped)
     draftPages.value = [...draftPages.value, warped]
-    cleanup()
     goto('edit')
   }
   function cleanup() {

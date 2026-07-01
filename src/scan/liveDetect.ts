@@ -44,6 +44,7 @@ export function startLiveDetect(
       work.height = Math.round(video.videoHeight * scale)
       work.getContext('2d')!.drawImage(video, 0, 0, work.width, work.height)
       const quad = await detectQuad(work)
+      if (stopped) return
       opts.onQuad?.(quad)
       history = [...history, quad].slice(-3)
       if (quadAreaRatio(quad, work.width, work.height) >= minArea && isStableQuad(history, jitter)) {
