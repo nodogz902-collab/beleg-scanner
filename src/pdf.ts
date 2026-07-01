@@ -37,3 +37,10 @@ export function pdfPageCount(bytes: Uint8Array): number {
   const matches = binaryString.match(/\/Type\s*\/Page(?![s])/g)
   return matches ? matches.length : 0
 }
+
+/** Testhilfe: zählt eingebettete Bild-XObjects im PDF. */
+export function pdfImageCount(bytes: Uint8Array): number {
+  const text = new TextDecoder('latin1').decode(bytes)
+  const matches = text.match(/\/Subtype\s*\/Image/g)
+  return matches ? matches.length : 0
+}
