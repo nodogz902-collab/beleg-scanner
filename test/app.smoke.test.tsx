@@ -3,8 +3,8 @@ import { describe, it, expect } from 'vitest'
 import { App } from '../src/app'
 
 describe('App', () => {
-  it('rendert die App-Wurzel', () => {
+  it('rendert die App-Shell mit Tab-Navigation', () => {
     render(<App />)
-    expect(screen.getByText('Belegablage')).toBeTruthy()
+    expect(screen.getByText('Scannen')).toBeTruthy()
   })
 })
