@@ -2,11 +2,8 @@ import { jsPDF } from 'jspdf'
 
 const A4 = { w: 595.28, h: 841.89 } // pt
 
-// Store the PDF count for testing purposes
-const pdfMetadata = new WeakMap<Blob, number>()
-
-/** Baut ein A4-PDF: jedes JPEG-DataURL wird bildfüllend (mit Rand) auf ein Blatt gelegt. */
-export function buildPdf(images: string[]): Blob {
+/** Baut ein A4-PDF und gibt die Bytes zurück: jedes JPEG-DataURL wird bildfüllend (mit Rand) auf ein Blatt gelegt. */
+export function buildPdfBytes(images: string[]): Uint8Array {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   const margin = 20
   images.forEach((dataUrl, idx) => {
@@ -23,28 +20,20 @@ export function buildPdf(images: string[]): Blob {
     const y = (A4.h - h) / 2
     doc.addImage(dataUrl, 'JPEG', x, y, w, h)
   })
-  const blob = doc.output('blob')
-  // Store page count for testing
-  pdfMetadata.set(blob, doc.getNumberOfPages())
-  return blob
+  return new Uint8Array(doc.output('arraybuffer') as ArrayBuffer)
 }
 
-/** Testhilfe: zählt Seiten anhand der PDF-Struktur. */
-export async function pdfPageCount(blob: Blob): Promise<number> {
-  // First try to use stored metadata
-  const stored = pdfMetadata.get(blob)
-  if (stored !== undefined) {
-    return stored
-  }
+/** Baut ein A4-PDF: jedes JPEG-DataURL wird bildfüllend (mit Rand) auf ein Blatt gelegt. */
+export function buildPdf(images: string[]): Blob {
+  const bytes = buildPdfBytes(images)
+  return new Blob([bytes], { type: 'application/pdf' })
+}
 
-  // Fallback: try to parse PDF content if available
-  if ('data' in blob && blob.data) {
-    const data = (blob as any).data
-    if (typeof data === 'string') {
-      const matches = data.match(/\/Type\s*\/Page[^s]/g)
-      return matches ? matches.length : 0
-    }
-  }
-
-  return 0
+/** Zählt Seiten anhand der realen PDF-Bytes durch Parsing von /Type /Page Objekten. */
+export function pdfPageCount(bytes: Uint8Array): number {
+  // Dekodiere die Bytes zu einem Latin-1-String für PDF-Texterkennung
+  const binaryString = new TextDecoder('latin1').decode(bytes)
+  // Zähle /Type /Page (nicht /Type /Pages, die ist der Baum-Knoten)
+  const matches = binaryString.match(/\/Type\s*\/Page(?![s])/g)
+  return matches ? matches.length : 0
 }
