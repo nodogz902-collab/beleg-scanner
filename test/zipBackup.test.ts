@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect, beforeEach } from 'vitest'
 import { serializeReceipts, deserialize, exportArchive, importArchive } from '../src/backup/zipBackup'
 import { saveReceipt, allReceipts } from '../src/db/receiptStore'
@@ -6,7 +7,7 @@ import type { Receipt } from '../src/types'
 
 const r: Receipt = { id: 'a', createdAt: 1, belegdatum: '2026-07-01', jahr: 2026, monat: 7, betrag: 1290, lieferant: 'Rewe', kategorie: 'Essen', tags: ['x'], notiz: 'n', pageBlobs: [], pdfBlob: new Blob([new Uint8Array([1,2,3])]), thumbnailDataUrl: 'data:t', ocrText: 'o' }
 
-const mkReceipt = (id: string, betrag: number, pdfBytes: Uint8Array): Receipt => ({
+const mkReceipt = (id: string, betrag: number, pdfBytes: Uint8Array<ArrayBuffer>): Receipt => ({
   id,
   createdAt: Date.now(),
   belegdatum: '2026-07-01',
