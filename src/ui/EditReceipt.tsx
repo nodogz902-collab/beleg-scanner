@@ -12,15 +12,15 @@ import type { Receipt, Quad } from '../types'
 import { Button } from './components/Button'
 import { Field } from './components/Field'
 
-export interface FormFields { belegdatum: string; betrag: number | null; lieferant: string; kategorie: string; tags: string[]; notiz: string; ocrText: string }
+export interface FormFields { belegdatum: string; einscannungsdatum: string; betrag: number | null; kategorie: string; tags: string[]; notiz: string; ocrText: string }
 
 export function buildReceiptFromForm(input: { pages: HTMLCanvasElement[]; form: FormFields; now: number; id: string }): Receipt {
   const { jahr, monat } = deriveYearMonth(input.form.belegdatum)
   const images = input.pages.map(c => c.toDataURL('image/jpeg', 0.85))
   return {
     id: input.id, createdAt: input.now,
-    belegdatum: input.form.belegdatum, jahr, monat,
-    betrag: input.form.betrag, lieferant: input.form.lieferant, kategorie: input.form.kategorie,
+    belegdatum: input.form.belegdatum, einscannungsdatum: input.form.einscannungsdatum, jahr, monat,
+    betrag: input.form.betrag, lieferant: '', kategorie: input.form.kategorie,
     tags: input.form.tags, notiz: input.form.notiz, ocrText: input.form.ocrText,
     pageBlobs: [], pdfBlob: buildPdf(images), thumbnailDataUrl: images[0],
   }
@@ -47,7 +47,7 @@ export function croppedForOcr(original: HTMLCanvasElement, quad: Quad): HTMLCanv
 export function mergeOcrIntoForm(
   prev: FormFields,
   ocrText: string,
-  extracted: { belegdatum: string | null; betrag: number | null; lieferant: string | null },
+  extracted: { belegdatum: string | null; betrag: number | null },
   touched: boolean,
 ): FormFields {
   if (touched) return { ...prev, ocrText }
@@ -56,7 +56,6 @@ export function mergeOcrIntoForm(
     ocrText,
     belegdatum: extracted.belegdatum ?? prev.belegdatum,
     betrag: extracted.betrag ?? prev.betrag,
-    lieferant: extracted.lieferant ?? prev.lieferant,
   }
 }
 
@@ -73,7 +72,7 @@ export function EditReceipt() {
   const [mode, setMode] = useState<'frame' | 'cropped'>('frame')
   const [progress, setProgress] = useState<number | null>(null)
   const [noDetection, setNoDetection] = useState(false)
-  const [form, setForm] = useState<FormFields>({ belegdatum: todayIso(), betrag: null, lieferant: '', kategorie: 'Sonstiges', tags: [], notiz: '', ocrText: '' })
+  const [form, setForm] = useState<FormFields>({ belegdatum: todayIso(), einscannungsdatum: todayIso(), betrag: null, kategorie: 'Sonstiges', tags: [], notiz: '', ocrText: '' })
   const [tagInput, setTagInput] = useState('')
 
   useEffect(() => {
@@ -108,10 +107,14 @@ export function EditReceipt() {
     const last = pages[pages.length - 1]
     const quad = editorRef.current?.getQuad() ?? quadRef.current ?? last.quad
     quadRef.current = quad
-    croppedRef.current = croppedCanvas(last.original, quad)
-    setProgress(0)
-    setMode('cropped')
     const run = ++ocrRunRef.current
+    // Balken sofort auf dem Zuschnitt-Screen zeigen; Screen-Wechsel erst am Ende.
+    setProgress(0)
+    // Einen Frame warten, damit der Balken gezeichnet wird, bevor die synchrone
+    // Bild-Aufbereitung (warp + photoEnhance) den Main-Thread kurz blockiert.
+    await new Promise(r => requestAnimationFrame(() => r(null)))
+    if (ocrRunRef.current !== run) return
+    croppedRef.current = croppedCanvas(last.original, quad)
     try {
       const ocrUrl = croppedForOcr(last.original, quad).toDataURL('image/jpeg', 0.85)
       const text = await recognizeFirstPage(ocrUrl, p => {
@@ -120,10 +123,11 @@ export function EditReceipt() {
       if (ocrRunRef.current === run) {
         setForm(prev => mergeOcrIntoForm(prev, text, extractFields(text), touchedRef.current))
         setProgress(100)
-        setTimeout(() => { if (ocrRunRef.current === run) setProgress(null) }, 500)
+        setMode('cropped') // fertig -> Ergebnis-Screen
+        setTimeout(() => { if (ocrRunRef.current === run) setProgress(null) }, 400)
       }
     } catch {
-      if (ocrRunRef.current === run) setProgress(null) // OCR optional: Balken weg
+      if (ocrRunRef.current === run) { setMode('cropped'); setProgress(null) } // OCR optional
     }
   }
 
@@ -154,13 +158,13 @@ export function EditReceipt() {
       {mode === 'frame' && noDetection &&
         <p class="hint" style="color:var(--color-danger,#c00);margin:0">Kein Dokument erkannt – Rahmen bitte anpassen.</p>}
       {mode === 'frame'
-        ? <Button onClick={confirmCrop}>Zuschnitt bestätigen</Button>
+        ? <Button onClick={confirmCrop} disabled={progress !== null}>Zuschnitt bestätigen</Button>
         : <Button variant="secondary" onClick={() => { setProgress(null); setMode('frame') }}>Neu zuschneiden</Button>}
       {mode === 'cropped' &&
         <div class="card">
           <Field label="Belegdatum"><input type="date" value={form.belegdatum} onInput={e => { const v = (e.target as HTMLInputElement).value; if (!v) return; touchedRef.current = true; setForm(f => ({ ...f, belegdatum: v })) }} /></Field>
+          <Field label="Einscannungsdatum"><input type="date" value={form.einscannungsdatum} onInput={e => { const v = (e.target as HTMLInputElement).value; if (!v) return; setForm(f => ({ ...f, einscannungsdatum: v })) }} /></Field>
           <Field label="Betrag (€)"><input inputMode="decimal" value={form.betrag !== null ? (form.betrag/100).toFixed(2).replace('.', ',') : ''} onInput={e => { touchedRef.current = true; setForm(f => ({ ...f, betrag: parseEuroToCents((e.target as HTMLInputElement).value) })) }} /></Field>
-          <Field label="Lieferant"><input value={form.lieferant} onInput={e => { touchedRef.current = true; setForm(f => ({ ...f, lieferant: (e.target as HTMLInputElement).value })) }} /></Field>
           <Field label="Kategorie"><input value={form.kategorie} onInput={e => setForm(f => ({ ...f, kategorie: (e.target as HTMLInputElement).value }))} /></Field>
           <Field label="Tags"><input value={tagInput} onInput={e => setTagInput((e.target as HTMLInputElement).value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }} /></Field>
           <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap">{form.tags.map(t => <span class="chip">{t}</span>)}</div>

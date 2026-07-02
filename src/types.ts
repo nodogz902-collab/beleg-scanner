@@ -26,6 +26,7 @@ export interface Receipt {
   id: string
   createdAt: number
   belegdatum: string
+  einscannungsdatum?: string
   jahr: number
   monat: number
   betrag: number | null

@@ -51,7 +51,7 @@ export function Archive() {
             {results.map(r => <Card key={r.id} onClick={() => openDetail(r.id)}>
               <div style="display:flex;gap:var(--sp-3);align-items:center">
                 <img src={r.thumbnailDataUrl} style="width:48px;height:48px;object-fit:cover;border-radius:var(--radius-sm)" />
-                <div style="flex:1"><div style="font-weight:600">{r.lieferant || 'Ohne Lieferant'}</div><div style="color:var(--text-muted);font-size:var(--fs-sm)">{r.belegdatum}</div></div>
+                <div style="flex:1"><div style="font-weight:600">{r.belegdatum || 'Beleg'}</div><div style="color:var(--text-muted);font-size:var(--fs-sm)">{r.kategorie}</div></div>
                 <div style="font-weight:600">{formatEuro(r.betrag)}</div>
               </div>
             </Card>)}

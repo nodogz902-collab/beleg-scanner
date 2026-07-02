@@ -42,29 +42,31 @@ describe('croppedForOcr (OCR: entschattete Graustufen)', () => {
 })
 
 describe('mergeOcrIntoForm', () => {
-  const base: FormFields = { belegdatum: '2026-01-01', betrag: null, lieferant: '', kategorie: 'Sonstiges', tags: [], notiz: '', ocrText: '' }
+  const base: FormFields = { belegdatum: '2026-01-01', einscannungsdatum: '2026-07-02', betrag: null, kategorie: 'Sonstiges', tags: [], notiz: '', ocrText: '' }
 
-  it('füllt Felder aus OCR wenn nichts angefasst wurde', () => {
-    const out = mergeOcrIntoForm(base, 'ROH', { belegdatum: '2026-07-02', betrag: 1290, lieferant: 'Rewe' }, false)
+  it('füllt Belegdatum + Betrag aus OCR wenn nichts angefasst wurde', () => {
+    const out = mergeOcrIntoForm(base, 'ROH', { belegdatum: '2026-07-02', betrag: 1290 }, false)
     expect(out.ocrText).toBe('ROH')
     expect(out.belegdatum).toBe('2026-07-02')
     expect(out.betrag).toBe(1290)
-    expect(out.lieferant).toBe('Rewe')
+  })
+
+  it('lässt Einscannungsdatum von OCR unberührt', () => {
+    const out = mergeOcrIntoForm(base, 'ROH', { belegdatum: '2026-07-02', betrag: 1290 }, false)
+    expect(out.einscannungsdatum).toBe('2026-07-02')
   })
 
   it('behält null-OCR-Werte als vorherige Werte (?? prev)', () => {
-    const out = mergeOcrIntoForm(base, 'ROH', { belegdatum: null, betrag: null, lieferant: null }, false)
+    const out = mergeOcrIntoForm(base, 'ROH', { belegdatum: null, betrag: null }, false)
     expect(out.belegdatum).toBe('2026-01-01')
     expect(out.betrag).toBeNull()
-    expect(out.lieferant).toBe('')
   })
 
   it('überschreibt bei touched=true nur ocrText, nicht die Felder', () => {
-    const edited: FormFields = { ...base, belegdatum: '2026-05-05', betrag: 999, lieferant: 'Manuell' }
-    const out = mergeOcrIntoForm(edited, 'NEU', { belegdatum: '2026-07-02', betrag: 1290, lieferant: 'Rewe' }, true)
+    const edited: FormFields = { ...base, belegdatum: '2026-05-05', betrag: 999 }
+    const out = mergeOcrIntoForm(edited, 'NEU', { belegdatum: '2026-07-02', betrag: 1290 }, true)
     expect(out.ocrText).toBe('NEU')
     expect(out.belegdatum).toBe('2026-05-05')
     expect(out.betrag).toBe(999)
-    expect(out.lieferant).toBe('Manuell')
   })
 })
