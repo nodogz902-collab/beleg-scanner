@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../src/detect', () => ({
   warp: vi.fn((c: HTMLCanvasElement) => {
@@ -7,21 +7,35 @@ vi.mock('../src/detect', () => ({
     return w
   }),
 }))
-vi.mock('../src/enhance', () => ({ enhanceCanvas: vi.fn() }))
+vi.mock('../src/enhance', () => ({ documentScan: vi.fn(), enhanceCanvas: vi.fn() }))
 
-import { croppedCanvas, mergeOcrIntoForm, type FormFields } from '../src/ui/EditReceipt'
+import { croppedCanvas, croppedForOcr, mergeOcrIntoForm, type FormFields } from '../src/ui/EditReceipt'
 import { warp } from '../src/detect'
-import { enhanceCanvas } from '../src/enhance'
+import { documentScan, enhanceCanvas } from '../src/enhance'
 
 const QUAD = { topLeft: {x:0,y:0}, topRight: {x:10,y:0}, bottomRight: {x:10,y:10}, bottomLeft: {x:0,y:10} }
 
-describe('croppedCanvas', () => {
-  it('warpt zuerst, enhanct das Warp-Ergebnis und gibt es zurück', () => {
+beforeEach(() => vi.clearAllMocks())
+
+describe('croppedCanvas (Anzeige/PDF: S/W-Scan)', () => {
+  it('warpt zuerst, binarisiert das Warp-Ergebnis (documentScan) und gibt es zurück', () => {
     const original = document.createElement('canvas')
     const out = croppedCanvas(original, QUAD)
     expect(warp).toHaveBeenCalledWith(original, QUAD)
     const warped = (warp as any).mock.results[0].value
+    expect(documentScan).toHaveBeenCalledWith(warped)
+    expect(out).toBe(warped)
+  })
+})
+
+describe('croppedForOcr (OCR: Graustufen-Kontrast)', () => {
+  it('warpt zuerst, kontrastiert (enhanceCanvas) und binarisiert NICHT', () => {
+    const original = document.createElement('canvas')
+    const out = croppedForOcr(original, QUAD)
+    expect(warp).toHaveBeenCalledWith(original, QUAD)
+    const warped = (warp as any).mock.results.at(-1).value
     expect(enhanceCanvas).toHaveBeenCalledWith(warped)
+    expect(documentScan).not.toHaveBeenCalled()
     expect(out).toBe(warped)
   })
 })

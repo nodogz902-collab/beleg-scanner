@@ -26,3 +26,44 @@ export function enhanceCanvas(canvas: HTMLCanvasElement): void {
   autoContrast(img.data)
   ctx.putImageData(img, 0, 0)
 }
+
+interface CvLike {
+  Mat: new () => unknown
+  imread: (c: HTMLCanvasElement) => { delete: () => void }
+  imshow: (c: HTMLCanvasElement, m: unknown) => void
+  cvtColor: (src: unknown, dst: unknown, code: number) => void
+  adaptiveThreshold: (src: unknown, dst: unknown, maxValue: number, adaptiveMethod: number, thresholdType: number, blockSize: number, C: number) => void
+  COLOR_RGBA2GRAY: number
+  ADAPTIVE_THRESH_GAUSSIAN_C: number
+  THRESH_BINARY: number
+}
+
+/**
+ * Macht aus dem (bereits zugeschnittenen) Foto einen Schwarz-Weiss-Scan wie ein
+ * echtes PDF: Graustufen + adaptive Binarisierung (weisser Hintergrund, schwarze
+ * Schrift, robust gegen ungleichmaessiges Licht/Schatten). Nutzt das bereits fuer
+ * die Erkennung geladene OpenCV; faellt ohne OpenCV auf lineare Kontrast-Streckung
+ * zurueck, damit der Pfad nie bricht. Mutiert das Canvas in-place.
+ */
+export function documentScan(canvas: HTMLCanvasElement): void {
+  const cv = (window as unknown as { cv?: CvLike }).cv
+  if (!cv?.Mat) { enhanceCanvas(canvas); return }
+  let src: { delete: () => void } | null = null
+  let gray: { delete: () => void } | null = null
+  let dst: { delete: () => void } | null = null
+  try {
+    src = cv.imread(canvas)
+    gray = new cv.Mat() as { delete: () => void }
+    dst = new cv.Mat() as { delete: () => void }
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY)
+    // Blockgroesse ungerade, an die Bildgroesse gekoppelt und geclamped.
+    const base = Math.floor(Math.min(canvas.width, canvas.height) / 25)
+    const block = Math.min(51, Math.max(15, base % 2 === 0 ? base + 1 : base))
+    cv.adaptiveThreshold(gray, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, block, 15)
+    cv.imshow(canvas, dst)
+  } catch {
+    enhanceCanvas(canvas)
+  } finally {
+    src?.delete(); gray?.delete(); dst?.delete()
+  }
+}

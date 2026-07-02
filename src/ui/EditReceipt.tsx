@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { mountCropEditor } from '../cropEditor'
 import { warp, isFullFrame } from '../detect'
-import { enhanceCanvas } from '../enhance'
+import { documentScan, enhanceCanvas } from '../enhance'
 import { buildPdf } from '../pdf'
 import { recognizeFirstPage } from '../ocr'
 import { extractFields } from '../ocr/extractFields'
@@ -26,7 +26,19 @@ export function buildReceiptFromForm(input: { pages: HTMLCanvasElement[]; form: 
   }
 }
 
+/** Zuschnitt fuer Anzeige + PDF: entzerrt + Schwarz-Weiss-Scan-Look. */
 export function croppedCanvas(original: HTMLCanvasElement, quad: Quad): HTMLCanvasElement {
+  const w = warp(original, quad)
+  documentScan(w)
+  return w
+}
+
+/**
+ * Zuschnitt fuer OCR: derselbe Crop, aber nur Kontrast-Streckung (Graustufen)
+ * statt harter Binarisierung — die S/W-Optik zerlegt duenne Schrift und
+ * verschlechtert die Texterkennung, daher hier bewusst getrennt.
+ */
+export function croppedForOcr(original: HTMLCanvasElement, quad: Quad): HTMLCanvasElement {
   const w = warp(original, quad)
   enhanceCanvas(w)
   return w
@@ -99,7 +111,8 @@ export function EditReceipt() {
     setMode('cropped')
     const run = ++ocrRunRef.current
     try {
-      const text = await recognizeFirstPage(croppedRef.current.toDataURL('image/jpeg', 0.85))
+      const ocrUrl = croppedForOcr(last.original, quad).toDataURL('image/jpeg', 0.85)
+      const text = await recognizeFirstPage(ocrUrl)
       if (ocrRunRef.current === run) setForm(prev => mergeOcrIntoForm(prev, text, extractFields(text), touchedRef.current))
     } catch { /* OCR optional */ }
   }
@@ -110,9 +123,7 @@ export function EditReceipt() {
       if (i === lastIdx) {
         return croppedRef.current ?? croppedCanvas(p.original, quadRef.current ?? p.quad)
       }
-      const w = warp(p.original, p.quad)
-      enhanceCanvas(w)
-      return w
+      return croppedCanvas(p.original, p.quad)
     })
     const r = buildReceiptFromForm({ pages: finalPages, form, now: Date.now(), id: `r${Date.now()}` })
     await saveReceipt(r)
