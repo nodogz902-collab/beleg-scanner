@@ -27,10 +27,23 @@ export function suggestTitle(text: string, date: Date): string {
 }
 
 let workerPromise: ReturnType<typeof createWorker> | null = null
+// Der Worker wird einmalig erzeugt, der Logger also nur einmal gesetzt — daher
+// hier ein wechselbarer Callback, den recognizeFirstPage pro Lauf setzt.
+let progressCb: ((p: number) => void) | null = null
 
-/** Lazy: erstellt einen deutschen Tesseract-Worker (Modell wird gecacht). */
-export async function recognizeFirstPage(imageDataUrl: string): Promise<string> {
-  if (!workerPromise) workerPromise = createWorker('deu')
+/**
+ * Lazy: erstellt einen deutschen Tesseract-Worker (Modell wird gecacht).
+ * `onProgress` liefert 0..1 (Modell-Download beim ersten Lauf + Texterkennung).
+ */
+export async function recognizeFirstPage(imageDataUrl: string, onProgress?: (p: number) => void): Promise<string> {
+  progressCb = onProgress ?? null
+  if (!workerPromise) {
+    workerPromise = createWorker('deu', undefined, {
+      logger: (m: { status?: string; progress?: number }) => {
+        if (progressCb && typeof m.progress === 'number') progressCb(m.progress)
+      },
+    })
+  }
   try {
     const worker = await workerPromise
     const { data } = await worker.recognize(imageDataUrl)
@@ -38,5 +51,7 @@ export async function recognizeFirstPage(imageDataUrl: string): Promise<string> 
   } catch (err) {
     workerPromise = null
     throw err
+  } finally {
+    progressCb = null
   }
 }

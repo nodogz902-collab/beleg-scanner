@@ -71,6 +71,7 @@ export function EditReceipt() {
   const touchedRef = useRef(false)
   const ocrRunRef = useRef(0)
   const [mode, setMode] = useState<'frame' | 'cropped'>('frame')
+  const [progress, setProgress] = useState<number | null>(null)
   const [noDetection, setNoDetection] = useState(false)
   const [form, setForm] = useState<FormFields>({ belegdatum: todayIso(), betrag: null, lieferant: '', kategorie: 'Sonstiges', tags: [], notiz: '', ocrText: '' })
   const [tagInput, setTagInput] = useState('')
@@ -108,13 +109,22 @@ export function EditReceipt() {
     const quad = editorRef.current?.getQuad() ?? quadRef.current ?? last.quad
     quadRef.current = quad
     croppedRef.current = croppedCanvas(last.original, quad)
+    setProgress(0)
     setMode('cropped')
     const run = ++ocrRunRef.current
     try {
       const ocrUrl = croppedForOcr(last.original, quad).toDataURL('image/jpeg', 0.85)
-      const text = await recognizeFirstPage(ocrUrl)
-      if (ocrRunRef.current === run) setForm(prev => mergeOcrIntoForm(prev, text, extractFields(text), touchedRef.current))
-    } catch { /* OCR optional */ }
+      const text = await recognizeFirstPage(ocrUrl, p => {
+        if (ocrRunRef.current === run) setProgress(Math.round(p * 100))
+      })
+      if (ocrRunRef.current === run) {
+        setForm(prev => mergeOcrIntoForm(prev, text, extractFields(text), touchedRef.current))
+        setProgress(100)
+        setTimeout(() => { if (ocrRunRef.current === run) setProgress(null) }, 500)
+      }
+    } catch {
+      if (ocrRunRef.current === run) setProgress(null) // OCR optional: Balken weg
+    }
   }
 
   async function save() {
@@ -136,11 +146,16 @@ export function EditReceipt() {
   return (
     <div class="edit" style="padding:var(--sp-4);display:grid;gap:var(--sp-4)">
       <div ref={holderRef} class="card" />
+      {progress !== null &&
+        <div class="scan-progress" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
+          <div class="scan-progress-track"><div class="scan-progress-fill" style={`width:${progress}%`} /></div>
+          <span class="scan-progress-label">Beleg wird verarbeitet … {progress}%</span>
+        </div>}
       {mode === 'frame' && noDetection &&
         <p class="hint" style="color:var(--color-danger,#c00);margin:0">Kein Dokument erkannt – Rahmen bitte anpassen.</p>}
       {mode === 'frame'
         ? <Button onClick={confirmCrop}>Zuschnitt bestätigen</Button>
-        : <Button variant="secondary" onClick={() => setMode('frame')}>Neu zuschneiden</Button>}
+        : <Button variant="secondary" onClick={() => { setProgress(null); setMode('frame') }}>Neu zuschneiden</Button>}
       {mode === 'cropped' &&
         <div class="card">
           <Field label="Belegdatum"><input type="date" value={form.belegdatum} onInput={e => { const v = (e.target as HTMLInputElement).value; if (!v) return; touchedRef.current = true; setForm(f => ({ ...f, belegdatum: v })) }} /></Field>

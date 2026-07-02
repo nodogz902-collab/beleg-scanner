@@ -21,6 +21,10 @@ button { font: inherit; }
 .crop-mask { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 1; }
 .corner-handle { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35); touch-action: none; cursor: grab; z-index: 2; }
 .corner-handle:active { cursor: grabbing; }
+.scan-progress { display: flex; flex-direction: column; gap: var(--sp-1); }
+.scan-progress-track { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.scan-progress-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .2s ease; }
+.scan-progress-label { font-size: var(--fs-sm); color: var(--text-muted); text-align: center; }
 .app-shell { min-height: 100dvh; display: flex; flex-direction: column; }
 .app-main { flex: 1; max-width: 720px; width: 100%; margin: 0 auto; }
 .tabbar { position: sticky; bottom: 0; display: flex; background: var(--surface); border-top: 1px solid var(--border); }
