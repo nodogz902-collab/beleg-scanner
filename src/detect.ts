@@ -21,6 +21,13 @@ export function fullFrameQuad(w: number, h: number): Quad {
   }
 }
 
+export function isFullFrame(quad: Quad, width: number, height: number): boolean {
+  const f = fullFrameQuad(width, height)
+  const eq = (a: Point, b: Point) => a.x === b.x && a.y === b.y
+  return eq(quad.topLeft, f.topLeft) && eq(quad.topRight, f.topRight)
+    && eq(quad.bottomRight, f.bottomRight) && eq(quad.bottomLeft, f.bottomLeft)
+}
+
 // --- jscanify/OpenCV Wrapper -----------------------------------------------
 //
 // jscanify's npm "main" entry (src/jscanify-node.js) is a Node.js build that
