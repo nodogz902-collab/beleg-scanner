@@ -27,43 +27,86 @@ export function enhanceCanvas(canvas: HTMLCanvasElement): void {
   ctx.putImageData(img, 0, 0)
 }
 
+interface Mat { delete: () => void }
 interface CvLike {
-  Mat: new () => unknown
-  imread: (c: HTMLCanvasElement) => { delete: () => void }
+  Mat: new () => Mat
+  Size: new (w: number, h: number) => unknown
+  imread: (c: HTMLCanvasElement) => Mat
   imshow: (c: HTMLCanvasElement, m: unknown) => void
   cvtColor: (src: unknown, dst: unknown, code: number) => void
-  adaptiveThreshold: (src: unknown, dst: unknown, maxValue: number, adaptiveMethod: number, thresholdType: number, blockSize: number, C: number) => void
+  divide: (src1: unknown, src2: unknown, dst: unknown, scale: number) => void
+  medianBlur: (src: unknown, dst: unknown, ksize: number) => void
+  GaussianBlur: (src: unknown, dst: unknown, ksize: unknown, sigmaX: number) => void
+  getStructuringElement: (shape: number, ksize: unknown) => Mat
+  morphologyEx: (src: unknown, dst: unknown, op: number, kernel: unknown) => void
+  threshold: (src: unknown, dst: unknown, thresh: number, maxval: number, type: number) => void
   COLOR_RGBA2GRAY: number
-  ADAPTIVE_THRESH_GAUSSIAN_C: number
+  MORPH_ELLIPSE: number
+  MORPH_CLOSE: number
   THRESH_BINARY: number
+  THRESH_OTSU: number
+}
+
+function oddClamp(v: number, lo: number, hi: number): number {
+  const r = Math.round(v)
+  const odd = r % 2 === 0 ? r + 1 : r
+  return Math.min(hi, Math.max(lo, odd))
 }
 
 /**
- * Macht aus dem (bereits zugeschnittenen) Foto einen Schwarz-Weiss-Scan wie ein
- * echtes PDF: Graustufen + adaptive Binarisierung (weisser Hintergrund, schwarze
- * Schrift, robust gegen ungleichmaessiges Licht/Schatten). Nutzt das bereits fuer
- * die Erkennung geladene OpenCV; faellt ohne OpenCV auf lineare Kontrast-Streckung
- * zurueck, damit der Pfad nie bricht. Mutiert das Canvas in-place.
+ * Gemeinsame Scan-Aufbereitung des (bereits zugeschnittenen) Fotos. Kernidee
+ * gegen Schatten/Rauschen auf echten Handyfotos:
+ *  1. Graustufen.
+ *  2. Beleuchtung/Schatten schaetzen: morphologisches Close mit grossem Kernel
+ *     (loescht den Text weg -> uebrig bleibt der Papier-Hintergrund inkl. Verlauf).
+ *  3. Flat-Field: gray / background * 255 -> gleichmaessig ausgeleuchtet, weisser
+ *     Hintergrund, Schatten weg.
+ * `binarize=false` liefert dieses saubere Graustufenbild (ideal fuer OCR).
+ * `binarize=true` legt fuer den PDF-Look zusaetzlich einen globalen Otsu-Threshold
+ * drauf: nach dem Flat-Field ist die Beleuchtung gleichmaessig, daher trifft ein
+ * globaler Schwellwert -> leere Flaechen bleiben komplett weiss (kein Speckle,
+ * anders als bei adaptivem Threshold auf verrauschtem Papier).
+ * Ohne OpenCV Fallback auf lineare Kontrast-Streckung. Mutiert das Canvas in-place.
  */
-export function documentScan(canvas: HTMLCanvasElement): void {
+function scanPipeline(canvas: HTMLCanvasElement, binarize: boolean): void {
   const cv = (window as unknown as { cv?: CvLike }).cv
   if (!cv?.Mat) { enhanceCanvas(canvas); return }
-  let src: { delete: () => void } | null = null
-  let gray: { delete: () => void } | null = null
-  let dst: { delete: () => void } | null = null
+  const mats: (Mat | null)[] = []
+  const track = <T extends Mat>(m: T): T => { mats.push(m); return m }
   try {
-    src = cv.imread(canvas)
-    gray = new cv.Mat() as { delete: () => void }
-    dst = new cv.Mat() as { delete: () => void }
+    const src = track(cv.imread(canvas))
+    const gray = track(new cv.Mat())
+    const bg = track(new cv.Mat())
+    const norm = track(new cv.Mat())
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY)
-    // Blockgroesse ungerade, an die Bildgroesse gekoppelt und geclamped.
-    const base = Math.floor(Math.min(canvas.width, canvas.height) / 25)
-    const block = Math.min(51, Math.max(15, base % 2 === 0 ? base + 1 : base))
-    cv.adaptiveThreshold(gray, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, block, 15)
+
+    const dim = Math.min(canvas.width, canvas.height)
+    // Kernel groesser als Zeichenhoehe, damit der Text im Hintergrund verschwindet.
+    const k = oddClamp(dim / 15, 21, 81)
+    const kernel = track(cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(k, k)))
+    cv.morphologyEx(gray, bg, cv.MORPH_CLOSE, kernel)
+    cv.divide(gray, bg, norm, 255)
+
+    if (!binarize) { cv.imshow(canvas, norm); return }
+
+    cv.GaussianBlur(norm, norm, new cv.Size(3, 3), 0) // Rauschen glaetten vor Otsu
+    const dst = track(new cv.Mat())
+    cv.threshold(norm, dst, 0, 255, cv.THRESH_BINARY | cv.THRESH_OTSU)
+    cv.medianBlur(dst, dst, 3) // Rest-Speckle entfernen
     cv.imshow(canvas, dst)
   } catch {
     enhanceCanvas(canvas)
   } finally {
-    src?.delete(); gray?.delete(); dst?.delete()
+    mats.forEach(m => m?.delete())
   }
+}
+
+/** Schwarz-Weiss-Scan (PDF-Look) fuer Anzeige + PDF. */
+export function documentScan(canvas: HTMLCanvasElement): void {
+  scanPipeline(canvas, true)
+}
+
+/** Entschattetes Graustufenbild fuer die OCR (gleichmaessige Beleuchtung, keine Binarisierungs-Artefakte). */
+export function documentGray(canvas: HTMLCanvasElement): void {
+  scanPipeline(canvas, false)
 }

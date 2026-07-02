@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { mountCropEditor } from '../cropEditor'
 import { warp, isFullFrame } from '../detect'
-import { documentScan, enhanceCanvas } from '../enhance'
+import { documentScan, documentGray } from '../enhance'
 import { buildPdf } from '../pdf'
 import { recognizeFirstPage } from '../ocr'
 import { extractFields } from '../ocr/extractFields'
@@ -40,7 +40,7 @@ export function croppedCanvas(original: HTMLCanvasElement, quad: Quad): HTMLCanv
  */
 export function croppedForOcr(original: HTMLCanvasElement, quad: Quad): HTMLCanvasElement {
   const w = warp(original, quad)
-  enhanceCanvas(w)
+  documentGray(w)
   return w
 }
 
