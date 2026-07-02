@@ -115,24 +115,89 @@ export function loadOpenCv(): Promise<void> {
   return openCvPromise
 }
 
+interface CvMat { delete: () => void; rows: number; cols: number; data32S: Int32Array }
+interface CvMatVector { size: () => number; get: (i: number) => CvMat; delete: () => void }
+interface CvDetect {
+  imread: (c: HTMLCanvasElement) => CvMat
+  Mat: new () => CvMat
+  MatVector: new () => CvMatVector
+  Size: new (w: number, h: number) => unknown
+  resize: (src: CvMat, dst: CvMat, dsize: unknown) => void
+  cvtColor: (src: CvMat, dst: CvMat, code: number) => void
+  GaussianBlur: (src: CvMat, dst: CvMat, ksize: unknown, sigmaX: number) => void
+  Canny: (src: CvMat, dst: CvMat, t1: number, t2: number) => void
+  dilate: (src: CvMat, dst: CvMat, kernel: CvMat) => void
+  getStructuringElement: (shape: number, ksize: unknown) => CvMat
+  findContours: (img: CvMat, contours: CvMatVector, hierarchy: CvMat, mode: number, method: number) => void
+  contourArea: (c: CvMat) => number
+  arcLength: (c: CvMat, closed: boolean) => number
+  approxPolyDP: (curve: CvMat, approx: CvMat, epsilon: number, closed: boolean) => void
+  isContourConvex: (c: CvMat) => boolean
+  COLOR_RGBA2GRAY: number
+  MORPH_RECT: number
+  RETR_EXTERNAL: number
+  CHAIN_APPROX_SIMPLE: number
+}
+
+/**
+ * Findet die Dokument-Ecken per OpenCV-Kontursuche (robuster als jscanifys
+ * "groesste Kontur", die auf echten Fotos oft das ganze Bild/den Tisch nimmt):
+ * verkleinern -> Graustufen -> Blur -> Canny-Kanten -> dilatieren -> Konturen.
+ * Aus den Konturen das flaechengroesste KONVEXE Viereck waehlen, dessen Flaeche
+ * zwischen 15% und 98% des Bildes liegt (98%-Deckel verwirft den Vollbild-Rahmen).
+ * Kein Treffer -> fullFrameQuad (Nutzer zieht dann manuell).
+ */
 export async function detectQuad(canvas: HTMLCanvasElement): Promise<Quad> {
+  await loadOpenCv()
+  const cv = window.cv as unknown as CvDetect
+  const mats: { delete: () => void }[] = []
+  const track = <T extends { delete: () => void }>(m: T): T => { mats.push(m); return m }
   try {
-    await loadOpenCv()
-    const cv = window.cv as { imread: (c: HTMLCanvasElement) => { delete: () => void } }
-    const scanner = new Jscanify()
-    const mat = cv.imread(canvas)
-    try {
-      const contour = scanner.findPaperContour(mat)
-      if (!contour) return fullFrameQuad(canvas.width, canvas.height)
-      const c = scanner.getCornerPoints(contour)
-      const pts = [c.topLeftCorner, c.topRightCorner, c.bottomRightCorner, c.bottomLeftCorner]
-      if (pts.some(p => !p)) return fullFrameQuad(canvas.width, canvas.height)
-      return orderCorners(pts as Point[])
-    } finally {
-      mat.delete()
+    const src = track(cv.imread(canvas))
+    const maxDim = 900
+    const scale = Math.min(1, maxDim / Math.max(canvas.width, canvas.height))
+    const w = Math.max(1, Math.round(canvas.width * scale))
+    const h = Math.max(1, Math.round(canvas.height * scale))
+    const work = track(new cv.Mat())
+    cv.resize(src, work, new cv.Size(w, h))
+
+    const gray = track(new cv.Mat())
+    cv.cvtColor(work, gray, cv.COLOR_RGBA2GRAY)
+    cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0)
+    const edges = track(new cv.Mat())
+    cv.Canny(gray, edges, 50, 150)
+    const kernel = track(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5)))
+    cv.dilate(edges, edges, kernel) // Kanten schliessen, damit die Kontur rundlaeuft
+
+    const contours = track(new cv.MatVector())
+    const hierarchy = track(new cv.Mat())
+    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+    const imgArea = w * h
+    const epsFactors = [0.02, 0.03, 0.04, 0.05]
+    let bestPts: Point[] | null = null
+    let bestArea = 0
+    for (let i = 0; i < contours.size(); i++) {
+      const c = contours.get(i)
+      const area = cv.contourArea(c)
+      if (area < imgArea * 0.15 || area > imgArea * 0.98 || area <= bestArea) { c.delete(); continue }
+      const peri = cv.arcLength(c, true)
+      for (const f of epsFactors) {
+        const approx = track(new cv.Mat())
+        cv.approxPolyDP(c, approx, f * peri, true)
+        if (approx.rows === 4 && cv.isContourConvex(approx)) {
+          bestPts = [0, 1, 2, 3].map(j => ({ x: approx.data32S[j * 2] / scale, y: approx.data32S[j * 2 + 1] / scale }))
+          bestArea = area
+          break
+        }
+      }
+      c.delete()
     }
+    return bestPts ? orderCorners(bestPts) : fullFrameQuad(canvas.width, canvas.height)
   } catch {
     return fullFrameQuad(canvas.width, canvas.height)
+  } finally {
+    mats.forEach(m => m.delete())
   }
 }
 
