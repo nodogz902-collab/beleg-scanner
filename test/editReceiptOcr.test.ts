@@ -7,23 +7,23 @@ vi.mock('../src/detect', () => ({
     return w
   }),
 }))
-vi.mock('../src/enhance', () => ({ enhanceCanvas: vi.fn(), documentGray: vi.fn() }))
+vi.mock('../src/enhance', () => ({ photoEnhance: vi.fn(), documentGray: vi.fn() }))
 
 import { croppedCanvas, croppedForOcr, mergeOcrIntoForm, type FormFields } from '../src/ui/EditReceipt'
 import { warp } from '../src/detect'
-import { enhanceCanvas, documentGray } from '../src/enhance'
+import { photoEnhance, documentGray } from '../src/enhance'
 
 const QUAD = { topLeft: {x:0,y:0}, topRight: {x:10,y:0}, bottomRight: {x:10,y:10}, bottomLeft: {x:0,y:10} }
 
 beforeEach(() => vi.clearAllMocks())
 
-describe('croppedCanvas (Anzeige/PDF: Fotolook)', () => {
-  it('warpt zuerst, kontrastiert das Foto (enhanceCanvas) und gibt es zurück', () => {
+describe('croppedCanvas (Anzeige/PDF: veredeltes Foto)', () => {
+  it('warpt zuerst, veredelt das Foto (photoEnhance) und gibt es zurück', () => {
     const original = document.createElement('canvas')
     const out = croppedCanvas(original, QUAD)
     expect(warp).toHaveBeenCalledWith(original, QUAD)
     const warped = (warp as any).mock.results[0].value
-    expect(enhanceCanvas).toHaveBeenCalledWith(warped)
+    expect(photoEnhance).toHaveBeenCalledWith(warped)
     expect(documentGray).not.toHaveBeenCalled()
     expect(out).toBe(warped)
   })
@@ -36,7 +36,7 @@ describe('croppedForOcr (OCR: entschattete Graustufen)', () => {
     expect(warp).toHaveBeenCalledWith(original, QUAD)
     const warped = (warp as any).mock.results.at(-1).value
     expect(documentGray).toHaveBeenCalledWith(warped)
-    expect(enhanceCanvas).not.toHaveBeenCalled()
+    expect(photoEnhance).not.toHaveBeenCalled()
     expect(out).toBe(warped)
   })
 })

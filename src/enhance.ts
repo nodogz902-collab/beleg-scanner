@@ -37,7 +37,13 @@ interface CvLike {
   divide: (src1: unknown, src2: unknown, dst: unknown, scale: number) => void
   getStructuringElement: (shape: number, ksize: unknown) => Mat
   morphologyEx: (src: unknown, dst: unknown, op: number, kernel: unknown) => void
+  bilateralFilter: (src: unknown, dst: unknown, d: number, sigmaColor: number, sigmaSpace: number) => void
+  GaussianBlur: (src: unknown, dst: unknown, ksize: unknown, sigmaX: number) => void
+  addWeighted: (src1: unknown, alpha: number, src2: unknown, beta: number, gamma: number, dst: unknown) => void
   COLOR_RGBA2GRAY: number
+  COLOR_RGBA2RGB: number
+  COLOR_RGB2GRAY: number
+  COLOR_GRAY2RGB: number
   MORPH_ELLIPSE: number
   MORPH_CLOSE: number
 }
@@ -46,6 +52,62 @@ function oddClamp(v: number, lo: number, hi: number): number {
   const r = Math.round(v)
   const odd = r % 2 === 0 ? r + 1 : r
   return Math.min(hi, Math.max(lo, odd))
+}
+
+/**
+ * Foto-Veredelung des (bereits zugeschnittenen) Belegs fuer Anzeige + PDF —
+ * bleibt ein FARBFOTO, wird aber sauber wie ein gutes Scan-Foto:
+ *  1. Entrauschen: kantenerhaltender Bilateralfilter (glaettet Sensorrauschen,
+ *     laesst Text-Kanten scharf).
+ *  2. Entschatten + aufhellen: Luminanz-Hintergrund (morphologisches Close, grosser
+ *     Kernel) schaetzen und ALLE Farbkanaele durch denselben Gain teilen
+ *     (gray/bg). Das ebnet Licht/Schatten ein und hebt das Papier auf Weiss,
+ *     OHNE den Farbton zu verschieben (Logos/Stempel bleiben farbig).
+ *  3. Schaerfen + Kontrast: Unsharp-Mask (Original staerker, Weichzeichnung
+ *     abgezogen) macht Text knackiger.
+ * Ohne OpenCV Fallback auf lineare Kontrast-Streckung. Mutiert das Canvas in-place.
+ */
+export function photoEnhance(canvas: HTMLCanvasElement): void {
+  const cv = (window as unknown as { cv?: CvLike }).cv
+  if (!cv?.Mat) { enhanceCanvas(canvas); return }
+  const mats: (Mat | null)[] = []
+  const track = <T extends Mat>(m: T): T => { mats.push(m); return m }
+  try {
+    const src = track(cv.imread(canvas))
+    const rgb = track(new cv.Mat())
+    cv.cvtColor(src, rgb, cv.COLOR_RGBA2RGB)
+
+    // 1) Entschatten + aufhellen ueber Luminanz-Gain (Farbton bleibt).
+    //    Zuerst, weil das Aufhellen dunkler Bereiche deren Rauschen hochzieht —
+    //    also danach entrauschen, nicht davor.
+    const gray = track(new cv.Mat())
+    cv.cvtColor(rgb, gray, cv.COLOR_RGB2GRAY)
+    const dim = Math.min(canvas.width, canvas.height)
+    const k = oddClamp(dim / 15, 21, 81)
+    const kernel = track(cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(k, k)))
+    const bg = track(new cv.Mat())
+    cv.morphologyEx(gray, bg, cv.MORPH_CLOSE, kernel)
+    const bg3 = track(new cv.Mat())
+    cv.cvtColor(bg, bg3, cv.COLOR_GRAY2RGB)
+    const norm = track(new cv.Mat())
+    cv.divide(rgb, bg3, norm, 255)
+
+    // 2) Entrauschen (kantenerhaltend, kraeftig genug fuer Sensorkorn)
+    const den = track(new cv.Mat())
+    cv.bilateralFilter(norm, den, 9, 75, 75)
+
+    // 3) Unsharp-Mask, sanft (staerkeres Schaerfen wuerde Restkorn wieder hochziehen)
+    const blur = track(new cv.Mat())
+    cv.GaussianBlur(den, blur, new cv.Size(0, 0), 2)
+    const sharp = track(new cv.Mat())
+    cv.addWeighted(den, 1.3, blur, -0.3, 0, sharp)
+
+    cv.imshow(canvas, sharp)
+  } catch {
+    enhanceCanvas(canvas)
+  } finally {
+    mats.forEach(m => m?.delete())
+  }
 }
 
 /**
