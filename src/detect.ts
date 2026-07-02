@@ -122,9 +122,14 @@ interface CvDetect {
   Mat: new () => CvMat
   MatVector: new () => CvMatVector
   Size: new (w: number, h: number) => unknown
-  resize: (src: CvMat, dst: CvMat, dsize: unknown) => void
+  Scalar: new (a: number, b: number, c: number, d: number) => unknown
   cvtColor: (src: CvMat, dst: CvMat, code: number) => void
-  GaussianBlur: (src: CvMat, dst: CvMat, ksize: unknown, sigmaX: number) => void
+  resize: (src: CvMat, dst: CvMat, dsize: unknown) => void
+  copyMakeBorder: (src: CvMat, dst: CvMat, t: number, b: number, l: number, r: number, type: number, value: unknown) => void
+  medianBlur: (src: CvMat, dst: CvMat, ksize: number) => void
+  split: (src: CvMat, channels: CvMatVector) => void
+  threshold: (src: CvMat, dst: CvMat, thresh: number, maxval: number, type: number) => number
+  morphologyEx: (src: CvMat, dst: CvMat, op: number, kernel: CvMat) => void
   Canny: (src: CvMat, dst: CvMat, t1: number, t2: number) => void
   dilate: (src: CvMat, dst: CvMat, kernel: CvMat) => void
   getStructuringElement: (shape: number, ksize: unknown) => CvMat
@@ -133,19 +138,84 @@ interface CvDetect {
   arcLength: (c: CvMat, closed: boolean) => number
   approxPolyDP: (curve: CvMat, approx: CvMat, epsilon: number, closed: boolean) => void
   isContourConvex: (c: CvMat) => boolean
-  COLOR_RGBA2GRAY: number
   MORPH_RECT: number
-  RETR_EXTERNAL: number
+  MORPH_CLOSE: number
+  RETR_TREE: number
   CHAIN_APPROX_SIMPLE: number
+  THRESH_BINARY: number
+  BORDER_CONSTANT: number
+  COLOR_RGBA2RGB: number
+}
+
+// Portiert aus OSS-DocumentScanner (Akylas) DocumentDetector.cpp — Defaults 1:1.
+const DETECT = {
+  resizeThreshold: 500,
+  borderSize: 10,
+  cannyFactor: 2,
+  morphologyAnchorSize: 4,
+  dilateAnchorSize: 3,
+  thresh: 160,
+  threshMax: 256,
+  medianBlurValue: 9,
+  contoursApproxEpsilonFactor: 0.02,
+  expectedMaxCosine: 0.4,
+  expectedOptimalMaxCosine: 0.3,
+  expectedAreaFactor: 0.20,
+  areaScaleMinFactor: 0.04,
+  minDistanceFromBorderFactor: 0,
+}
+
+interface Square { pts: Point[]; area: number; maxCos: number; weight: number }
+const squareScore = (s: Square) => s.area + s.weight * (1 - s.maxCos)
+
+/** Cosinus des Winkels am Scheitel pt0 zwischen pt0->pt1 und pt0->pt2. */
+function angleCos(pt1: Point, pt2: Point, pt0: Point): number {
+  const dx1 = pt1.x - pt0.x, dy1 = pt1.y - pt0.y
+  const dx2 = pt2.x - pt0.x, dy2 = pt2.y - pt0.y
+  return (dx1 * dx2 + dy1 * dy2) / Math.sqrt((dx1 * dx1 + dy1 * dy1) * (dx2 * dx2 + dy2 * dy2) + 1e-10)
+}
+
+/** Sucht konvexe 4-Ecke in der Kanten-Maske edged (w×h inkl. Rand); Rand-nahe und schiefe verwirft. */
+function findSquares(cv: CvDetect, edged: CvMat, w: number, h: number, weight: number, out: Square[]): void {
+  const marge = w * DETECT.minDistanceFromBorderFactor + DETECT.borderSize
+  const maxAllowedArea = (w - 2 * DETECT.borderSize) * (h - 2 * DETECT.borderSize) * 0.92
+  const minArea = w * h * DETECT.areaScaleMinFactor
+  const contours = new cv.MatVector()
+  const hierarchy = new cv.Mat()
+  cv.findContours(edged, contours, hierarchy, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+  for (let i = 0; i < contours.size(); i++) {
+    const c = contours.get(i)
+    const arc = cv.arcLength(c, true)
+    const area = cv.contourArea(c)
+    if (arc < 100 || area < minArea || area >= maxAllowedArea) { c.delete(); continue }
+    const approx = new cv.Mat()
+    cv.approxPolyDP(c, approx, arc * DETECT.contoursApproxEpsilonFactor, true)
+    if (approx.rows === 4 && cv.isContourConvex(approx)) {
+      const d = approx.data32S
+      const pts: Point[] = [0, 1, 2, 3].map(k => ({ x: d[k * 2], y: d[k * 2 + 1] }))
+      let ignore = false
+      for (const p of pts) { if (p.x < marge || p.x >= w - marge || p.y < marge || p.y >= h - marge) { ignore = true; break } }
+      if (!ignore) {
+        let maxCos = 0
+        for (let j = 2; j < 6; j++) {
+          const cos = Math.abs(angleCos(pts[j % 4], pts[j - 2], pts[(j - 1) % 4]))
+          if (cos > maxCos) maxCos = cos
+        }
+        if (maxCos < DETECT.expectedMaxCosine) out.push({ pts, area, maxCos, weight })
+      }
+    }
+    approx.delete(); c.delete()
+  }
+  contours.delete(); hierarchy.delete()
 }
 
 /**
- * Findet die Dokument-Ecken per OpenCV-Kontursuche (robuster als jscanifys
- * "groesste Kontur", die auf echten Fotos oft das ganze Bild/den Tisch nimmt):
- * verkleinern -> Graustufen -> Blur -> Canny-Kanten -> dilatieren -> Konturen.
- * Aus den Konturen das flaechengroesste KONVEXE Viereck waehlen, dessen Flaeche
- * zwischen 15% und 98% des Bildes liegt (98%-Deckel verwirft den Vollbild-Rahmen).
- * Kein Treffer -> fullFrameQuad (Nutzer zieht dann manuell).
+ * Dokument-Erkennung, portiert aus OSS-DocumentScanner (Akylas): auf ~500px
+ * verkleinern, schwarzen Rand (10px) hinzufuegen (Dokumente am Bildrand schliessen
+ * sich, und der Vollbild-/Tisch-Rahmen wird durch die Rand-Verwerfung eliminiert),
+ * medianBlur, dann pro Farbkanal Threshold + mehrere Canny-Stufen -> morph/dilate ->
+ * konvexe 4-Ecke mit ~90°-Ecken (Cosinus-Check) sammeln und das bestbewertete
+ * (Flaeche + Gewicht·Rechtwinkligkeit) waehlen. Kein Treffer -> fullFrameQuad.
  */
 export async function detectQuad(canvas: HTMLCanvasElement): Promise<Quad> {
   await loadOpenCv()
@@ -154,46 +224,64 @@ export async function detectQuad(canvas: HTMLCanvasElement): Promise<Quad> {
   const track = <T extends { delete: () => void }>(m: T): T => { mats.push(m); return m }
   try {
     const src = track(cv.imread(canvas))
-    const maxDim = 900
-    const scale = Math.min(1, maxDim / Math.max(canvas.width, canvas.height))
-    const w = Math.max(1, Math.round(canvas.width * scale))
-    const h = Math.max(1, Math.round(canvas.height * scale))
-    const work = track(new cv.Mat())
-    cv.resize(src, work, new cv.Size(w, h))
-
-    const gray = track(new cv.Mat())
-    cv.cvtColor(work, gray, cv.COLOR_RGBA2GRAY)
-    cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0)
-    const edges = track(new cv.Mat())
-    cv.Canny(gray, edges, 50, 150)
-    const kernel = track(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5)))
-    cv.dilate(edges, edges, kernel) // Kanten schliessen, damit die Kontur rundlaeuft
-
-    const contours = track(new cv.MatVector())
-    const hierarchy = track(new cv.Mat())
-    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-
-    const imgArea = w * h
-    const epsFactors = [0.02, 0.03, 0.04, 0.05]
-    let bestPts: Point[] | null = null
-    let bestArea = 0
-    for (let i = 0; i < contours.size(); i++) {
-      const c = contours.get(i)
-      const area = cv.contourArea(c)
-      if (area < imgArea * 0.15 || area > imgArea * 0.98 || area <= bestArea) { c.delete(); continue }
-      const peri = cv.arcLength(c, true)
-      for (const f of epsFactors) {
-        const approx = track(new cv.Mat())
-        cv.approxPolyDP(c, approx, f * peri, true)
-        if (approx.rows === 4 && cv.isContourConvex(approx)) {
-          bestPts = [0, 1, 2, 3].map(j => ({ x: approx.data32S[j * 2] / scale, y: approx.data32S[j * 2 + 1] / scale }))
-          bestArea = area
-          break
-        }
-      }
-      c.delete()
+    // RGBA -> RGB: medianBlur mit grosser Blende unterstuetzt nur 1/3-Kanal.
+    const rgb = track(new cv.Mat())
+    cv.cvtColor(src, rgb, cv.COLOR_RGBA2RGB)
+    const maxSide = Math.max(canvas.width, canvas.height)
+    let resizeScale = 1
+    let rw = canvas.width, rh = canvas.height
+    if (maxSide > DETECT.resizeThreshold) {
+      resizeScale = maxSide / DETECT.resizeThreshold
+      rw = Math.floor(canvas.width / resizeScale)
+      rh = Math.floor(canvas.height / resizeScale)
     }
-    return bestPts ? orderCorners(bestPts) : fullFrameQuad(canvas.width, canvas.height)
+    const resized = track(new cv.Mat())
+    cv.resize(rgb, resized, new cv.Size(rw, rh))
+    const bordered = track(new cv.Mat())
+    const b = DETECT.borderSize
+    cv.copyMakeBorder(resized, bordered, b, b, b, b, cv.BORDER_CONSTANT, new cv.Scalar(0, 0, 0, 255))
+    const w = rw + 2 * b, h = rh + 2 * b
+    const imgArea = w * h
+
+    const blurred = track(new cv.Mat())
+    cv.medianBlur(bordered, blurred, DETECT.medianBlurValue)
+
+    const morph = track(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(DETECT.morphologyAnchorSize, DETECT.morphologyAnchorSize)))
+    const dil = track(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(DETECT.dilateAnchorSize, DETECT.dilateAnchorSize)))
+    const edged = track(new cv.Mat())
+    // extractChannel gibt es in OpenCV.js nicht -> einmal split, dann Kanaele nutzen.
+    const channels = track(new cv.MatVector())
+    cv.split(blurred, channels)
+
+    const squares: Square[] = []
+    let weight = 3000000
+    const goodEnough = () => {
+      if (!squares.length) return false
+      squares.sort((a, z) => squareScore(z) - squareScore(a))
+      const best = squares[0]
+      return best.maxCos < DETECT.expectedOptimalMaxCosine && best.area > imgArea * DETECT.expectedAreaFactor
+    }
+
+    let done = false
+    for (let i = 2; i >= 0 && !done; i--) {
+      const chan = channels.get(i)
+      cv.threshold(chan, edged, DETECT.thresh, DETECT.threshMax, cv.THRESH_BINARY)
+      cv.morphologyEx(edged, edged, cv.MORPH_CLOSE, morph)
+      cv.dilate(edged, edged, dil)
+      findSquares(cv, edged, w, h, weight--, squares)
+      if (goodEnough()) { done = true; break }
+      for (let t = 60; t >= 10 && !done; t -= 10) {
+        cv.Canny(chan, edged, t * DETECT.cannyFactor, DETECT.cannyFactor * t * 2)
+        cv.dilate(edged, edged, dil)
+        findSquares(cv, edged, w, h, weight--, squares)
+        if (goodEnough()) done = true
+      }
+    }
+
+    if (!squares.length) return fullFrameQuad(canvas.width, canvas.height)
+    squares.sort((a, z) => squareScore(z) - squareScore(a))
+    const pts = squares[0].pts.map(p => ({ x: (p.x - b) * resizeScale, y: (p.y - b) * resizeScale }))
+    return orderCorners(pts)
   } catch {
     return fullFrameQuad(canvas.width, canvas.height)
   } finally {
