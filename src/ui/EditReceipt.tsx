@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { mountCropEditor } from '../cropEditor'
 import { warp, isFullFrame } from '../detect'
-import { photoEnhance, documentGray } from '../enhance'
+import { documentEnhance, documentGray } from '../enhance'
 import { buildPdf } from '../pdf'
 import { recognizeFirstPage } from '../ocr'
 import { extractFields } from '../ocr/extractFields'
@@ -26,10 +26,10 @@ export function buildReceiptFromForm(input: { pages: HTMLCanvasElement[]; form: 
   }
 }
 
-/** Zuschnitt fuer Anzeige + PDF: entzerrtes, veredeltes Farbfoto (entschattet, entrauscht, geschaerft). */
+/** Zuschnitt fuer Anzeige + PDF: entzerrt + Whitepaper-Scan-Look (portiert aus OSS-DocumentScanner). */
 export function croppedCanvas(original: HTMLCanvasElement, quad: Quad): HTMLCanvasElement {
   const w = warp(original, quad)
-  photoEnhance(w)
+  documentEnhance(w)
   return w
 }
 
