@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { mountCropEditor } from '../cropEditor'
 import { warp, isFullFrame } from '../detect'
-import { documentScan, documentGray } from '../enhance'
+import { enhanceCanvas, documentGray } from '../enhance'
 import { buildPdf } from '../pdf'
 import { recognizeFirstPage } from '../ocr'
 import { extractFields } from '../ocr/extractFields'
@@ -26,10 +26,10 @@ export function buildReceiptFromForm(input: { pages: HTMLCanvasElement[]; form: 
   }
 }
 
-/** Zuschnitt fuer Anzeige + PDF: entzerrt + Schwarz-Weiss-Scan-Look. */
+/** Zuschnitt fuer Anzeige + PDF: entzerrtes Foto mit leichter Kontrast-Aufhellung (Fotolook). */
 export function croppedCanvas(original: HTMLCanvasElement, quad: Quad): HTMLCanvasElement {
   const w = warp(original, quad)
-  documentScan(w)
+  enhanceCanvas(w)
   return w
 }
 
