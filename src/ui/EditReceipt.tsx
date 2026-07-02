@@ -57,6 +57,7 @@ export function EditReceipt() {
   const quadRef = useRef<Quad | null>(null)
   const croppedRef = useRef<HTMLCanvasElement | null>(null)
   const touchedRef = useRef(false)
+  const ocrRunRef = useRef(0)
   const [mode, setMode] = useState<'frame' | 'cropped'>('frame')
   const [noDetection, setNoDetection] = useState(false)
   const [form, setForm] = useState<FormFields>({ belegdatum: todayIso(), betrag: null, lieferant: '', kategorie: 'Sonstiges', tags: [], notiz: '', ocrText: '' })
@@ -88,15 +89,18 @@ export function EditReceipt() {
     }
   }, [mode])
 
+  useEffect(() => () => { ocrRunRef.current++ }, [])
+
   async function confirmCrop() {
     const last = pages[pages.length - 1]
     const quad = editorRef.current?.getQuad() ?? quadRef.current ?? last.quad
     quadRef.current = quad
     croppedRef.current = croppedCanvas(last.original, quad)
     setMode('cropped')
+    const run = ++ocrRunRef.current
     try {
       const text = await recognizeFirstPage(croppedRef.current.toDataURL('image/jpeg', 0.85))
-      setForm(prev => mergeOcrIntoForm(prev, text, extractFields(text), touchedRef.current))
+      if (ocrRunRef.current === run) setForm(prev => mergeOcrIntoForm(prev, text, extractFields(text), touchedRef.current))
     } catch { /* OCR optional */ }
   }
 
