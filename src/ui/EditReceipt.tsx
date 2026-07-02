@@ -110,9 +110,9 @@ export function EditReceipt() {
     const run = ++ocrRunRef.current
     // Balken sofort auf dem Zuschnitt-Screen zeigen; Screen-Wechsel erst am Ende.
     setProgress(0)
-    // Einen Frame warten, damit der Balken gezeichnet wird, bevor die synchrone
-    // Bild-Aufbereitung (warp + photoEnhance) den Main-Thread kurz blockiert.
-    await new Promise(r => requestAnimationFrame(() => r(null)))
+    // Doppel-rAF: erst NACH dem tatsaechlichen Paint des Balkens weiterlaufen,
+    // sonst blockiert die synchrone Bild-Aufbereitung den Paint (Balken erst spaet sichtbar).
+    await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())))
     if (ocrRunRef.current !== run) return
     croppedRef.current = croppedCanvas(last.original, quad)
     try {

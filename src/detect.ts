@@ -149,11 +149,11 @@ interface CvDetect {
 
 // Portiert aus OSS-DocumentScanner (Akylas) DocumentDetector.cpp — Defaults 1:1.
 const DETECT = {
-  resizeThreshold: 500,
+  resizeThreshold: 700, // hoehere Detektions-Aufloesung -> weniger Rueckrechen-Versatz
   borderSize: 10,
   cannyFactor: 2,
-  morphologyAnchorSize: 4,
-  dilateAnchorSize: 3,
+  morphologyAnchorSize: 2, // kleinere Kernel -> engere Kontur, weniger Rand nach aussen
+  dilateAnchorSize: 2,
   thresh: 160,
   threshMax: 256,
   medianBlurValue: 9,
