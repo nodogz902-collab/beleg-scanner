@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { mountCropEditor } from '../cropEditor'
-import { warp } from '../detect'
+import { warp, isFullFrame } from '../detect'
 import { enhanceCanvas } from '../enhance'
 import { buildPdf } from '../pdf'
 import { recognizeFirstPage } from '../ocr'
@@ -53,27 +53,60 @@ function todayIso(): string { const d = new Date(); return `${d.getFullYear()}-$
 export function EditReceipt() {
   const pages = draftPages.value
   const holderRef = useRef<HTMLDivElement>(null)
-  const editorRef = useRef<{ getQuad(): any; destroy(): void } | null>(null)
+  const editorRef = useRef<{ getQuad(): Quad; destroy(): void } | null>(null)
+  const quadRef = useRef<Quad | null>(null)
+  const croppedRef = useRef<HTMLCanvasElement | null>(null)
+  const touchedRef = useRef(false)
+  const [mode, setMode] = useState<'frame' | 'cropped'>('frame')
+  const [noDetection, setNoDetection] = useState(false)
   const [form, setForm] = useState<FormFields>({ belegdatum: todayIso(), betrag: null, lieferant: '', kategorie: 'Sonstiges', tags: [], notiz: '', ocrText: '' })
   const [tagInput, setTagInput] = useState('')
 
   useEffect(() => {
     if (!pages.length || !holderRef.current) return
-    editorRef.current = mountCropEditor(holderRef.current, pages[pages.length - 1].original, pages[pages.length - 1].quad)
-    ;(async () => {
-      try {
-        const text = await recognizeFirstPage(pages[0].original.toDataURL('image/jpeg', 0.85))
-        const f = extractFields(text)
-        setForm(prev => ({ ...prev, ocrText: text, belegdatum: f.belegdatum ?? prev.belegdatum, betrag: f.betrag ?? prev.betrag, lieferant: f.lieferant ?? prev.lieferant }))
-      } catch { /* OCR optional */ }
-    })()
-    return () => editorRef.current?.destroy()
-  }, [])
+    const holder = holderRef.current
+    const last = pages[pages.length - 1]
+    if (quadRef.current === null) {
+      quadRef.current = last.quad
+      setNoDetection(isFullFrame(last.quad, last.original.width, last.original.height))
+    }
+    if (mode === 'frame') {
+      editorRef.current = mountCropEditor(holder, last.original, quadRef.current)
+      return () => {
+        quadRef.current = editorRef.current?.getQuad() ?? quadRef.current
+        editorRef.current?.destroy()
+        editorRef.current = null
+      }
+    }
+    // mode === 'cropped'
+    const cropped = croppedRef.current
+    if (cropped) {
+      holder.innerHTML = ''
+      cropped.style.width = '100%'
+      cropped.style.display = 'block'
+      holder.appendChild(cropped)
+    }
+  }, [mode])
+
+  async function confirmCrop() {
+    const last = pages[pages.length - 1]
+    const quad = editorRef.current?.getQuad() ?? quadRef.current ?? last.quad
+    quadRef.current = quad
+    croppedRef.current = croppedCanvas(last.original, quad)
+    setMode('cropped')
+    try {
+      const text = await recognizeFirstPage(croppedRef.current.toDataURL('image/jpeg', 0.85))
+      setForm(prev => mergeOcrIntoForm(prev, text, extractFields(text), touchedRef.current))
+    } catch { /* OCR optional */ }
+  }
 
   async function save() {
+    const lastIdx = pages.length - 1
     const finalPages = pages.map((p, i) => {
-      const quad = (i === pages.length - 1 && editorRef.current) ? editorRef.current.getQuad() : p.quad
-      const w = warp(p.original, quad)
+      if (i === lastIdx) {
+        return croppedRef.current ?? croppedCanvas(p.original, quadRef.current ?? p.quad)
+      }
+      const w = warp(p.original, p.quad)
       enhanceCanvas(w)
       return w
     })
@@ -88,17 +121,23 @@ export function EditReceipt() {
   return (
     <div class="edit" style="padding:var(--sp-4);display:grid;gap:var(--sp-4)">
       <div ref={holderRef} class="card" />
-      <div class="card">
-        <Field label="Belegdatum"><input type="date" value={form.belegdatum} onInput={e => { const v = (e.target as HTMLInputElement).value; if (!v) return; setForm(f => ({ ...f, belegdatum: v })) }} /></Field>
-        <Field label="Betrag (€)"><input inputMode="decimal" value={form.betrag !== null ? (form.betrag/100).toFixed(2).replace('.', ',') : ''} onInput={e => setForm(f => ({ ...f, betrag: parseEuroToCents((e.target as HTMLInputElement).value) }))} /></Field>
-        <Field label="Lieferant"><input value={form.lieferant} onInput={e => setForm(f => ({ ...f, lieferant: (e.target as HTMLInputElement).value }))} /></Field>
-        <Field label="Kategorie"><input value={form.kategorie} onInput={e => setForm(f => ({ ...f, kategorie: (e.target as HTMLInputElement).value }))} /></Field>
-        <Field label="Tags"><input value={tagInput} onInput={e => setTagInput((e.target as HTMLInputElement).value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }} /></Field>
-        <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap">{form.tags.map(t => <span class="chip">{t}</span>)}</div>
-        <Field label="Notiz"><textarea value={form.notiz} onInput={e => setForm(f => ({ ...f, notiz: (e.target as HTMLTextAreaElement).value }))} /></Field>
-      </div>
+      {mode === 'frame' && noDetection &&
+        <p class="hint" style="color:var(--color-danger,#c00);margin:0">Kein Dokument erkannt – Rahmen bitte anpassen.</p>}
+      {mode === 'frame'
+        ? <Button onClick={confirmCrop}>Zuschnitt bestätigen</Button>
+        : <Button variant="secondary" onClick={() => setMode('frame')}>Neu zuschneiden</Button>}
+      {mode === 'cropped' &&
+        <div class="card">
+          <Field label="Belegdatum"><input type="date" value={form.belegdatum} onInput={e => { const v = (e.target as HTMLInputElement).value; if (!v) return; touchedRef.current = true; setForm(f => ({ ...f, belegdatum: v })) }} /></Field>
+          <Field label="Betrag (€)"><input inputMode="decimal" value={form.betrag !== null ? (form.betrag/100).toFixed(2).replace('.', ',') : ''} onInput={e => { touchedRef.current = true; setForm(f => ({ ...f, betrag: parseEuroToCents((e.target as HTMLInputElement).value) })) }} /></Field>
+          <Field label="Lieferant"><input value={form.lieferant} onInput={e => { touchedRef.current = true; setForm(f => ({ ...f, lieferant: (e.target as HTMLInputElement).value })) }} /></Field>
+          <Field label="Kategorie"><input value={form.kategorie} onInput={e => setForm(f => ({ ...f, kategorie: (e.target as HTMLInputElement).value }))} /></Field>
+          <Field label="Tags"><input value={tagInput} onInput={e => setTagInput((e.target as HTMLInputElement).value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }} /></Field>
+          <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap">{form.tags.map(t => <span class="chip">{t}</span>)}</div>
+          <Field label="Notiz"><textarea value={form.notiz} onInput={e => setForm(f => ({ ...f, notiz: (e.target as HTMLTextAreaElement).value }))} /></Field>
+        </div>}
       <div style="display:flex;gap:var(--sp-3)">
-        <Button onClick={save}>Speichern</Button>
+        <Button onClick={save} disabled={mode === 'frame'}>Speichern</Button>
         <Button variant="ghost" onClick={() => { draftPages.value = []; goto('scan') }}>Verwerfen</Button>
       </div>
     </div>
