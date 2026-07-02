@@ -8,7 +8,7 @@ import { extractFields } from '../ocr/extractFields'
 import { deriveYearMonth, parseEuroToCents } from '../model/receipt'
 import { saveReceipt } from '../db/receiptStore'
 import { draftPages, goto } from '../state/appState'
-import type { Receipt } from '../types'
+import type { Receipt, Quad } from '../types'
 import { Button } from './components/Button'
 import { Field } from './components/Field'
 
@@ -23,6 +23,28 @@ export function buildReceiptFromForm(input: { pages: HTMLCanvasElement[]; form: 
     betrag: input.form.betrag, lieferant: input.form.lieferant, kategorie: input.form.kategorie,
     tags: input.form.tags, notiz: input.form.notiz, ocrText: input.form.ocrText,
     pageBlobs: [], pdfBlob: buildPdf(images), thumbnailDataUrl: images[0],
+  }
+}
+
+export function croppedCanvas(original: HTMLCanvasElement, quad: Quad): HTMLCanvasElement {
+  const w = warp(original, quad)
+  enhanceCanvas(w)
+  return w
+}
+
+export function mergeOcrIntoForm(
+  prev: FormFields,
+  ocrText: string,
+  extracted: { belegdatum: string | null; betrag: number | null; lieferant: string | null },
+  touched: boolean,
+): FormFields {
+  if (touched) return { ...prev, ocrText }
+  return {
+    ...prev,
+    ocrText,
+    belegdatum: extracted.belegdatum ?? prev.belegdatum,
+    betrag: extracted.betrag ?? prev.betrag,
+    lieferant: extracted.lieferant ?? prev.lieferant,
   }
 }
 
